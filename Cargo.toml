@@ -13,6 +13,7 @@ lazy-init = "0.3"
 
 [dev-dependencies]
 tempfile = "3.1.0"
+assert_approx_eq = "1.1.0"
 
 [build-dependencies]
 cc = { version = "1.0", features = ["parallel" ]}
