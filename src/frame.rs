@@ -1,6 +1,6 @@
 use std::fmt;
 
-/// Representation of a single frame of an MD trajectory
+/// A frame represents a single step in a trajectory.
 #[derive(Clone)]
 pub struct Frame {
     /// Number of atoms in the frame
@@ -9,7 +9,7 @@ pub struct Frame {
     /// Trajectory step
     pub step: u32,
 
-    /// Time step
+    /// Time step (usually in picoseconds)
     pub time: f32,
 
     /// 3x3 box vector 
@@ -21,13 +21,13 @@ pub struct Frame {
 
 impl Default for Frame {
     fn default() -> Frame {
-        return Frame { 
+        Frame { 
             num_atoms: 0,
             step: 0,
             time: 0.0,
             box_vector: [[0.0; 3]; 3],
             coords: Vec::with_capacity(0)
-        };
+        }
     }
 }
 
@@ -40,10 +40,12 @@ impl fmt::Debug for Frame {
 }
 
 impl Frame {
+    /// Creates an empty frame with a capacity of 0
     pub fn new() -> Frame {
         Frame{ ..Default::default() }
     }
 
+    /// Creates a frame with the given capacity
     pub fn with_capacity(num_atoms: u32) -> Frame {
         Frame {
             num_atoms: num_atoms,
@@ -53,6 +55,7 @@ impl Frame {
 
     }
 
+    /// Filters the frame by removing all atoms not matching the given indeces. 
     pub fn filter_coords(self: &mut Frame, indeces: &[usize]) {
         self.coords = self.coords.iter() 
             .map(|elem| elem.clone())
@@ -63,6 +66,7 @@ impl Frame {
         self.num_atoms = self.coords.len() as u32;
     }   
 
+    /// Length of the frame (number of atoms)
     pub fn len(self: &Frame) -> usize {
         self.num_atoms as usize
     } 

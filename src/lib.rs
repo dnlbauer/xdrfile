@@ -1,5 +1,46 @@
+//! # xdrfile
+//! Read and write xdr trajectory files in .xtc and .trr file format
+//!
+//! This crate is mainly intended to be a wrapper around the GROMACS libxdrfile
+//! XTC library and provides basic functionality to read and write xtc and trr
+//! files with a safe api.
+//!
+//! # Basic usage example
+//! ```rust
+//! use xdrfile::*;
+//! use std::path::Path; 
+//!
+//! let mut path = Path::new("tests/1l2y.xtc");
+//! // get a handle to the file
+//! let mut trj = XTCTrajectory::open(path, FileMode::Read).unwrap();
+//!
+//! // find number of atoms in the file
+//! let num_atoms = trj.get_num_atoms().unwrap();
+//! 
+//! // a frame object is used to get to read or write from a trajectory
+//! // without instantiating data arrays for every step
+//! let mut frame = Frame::with_capacity(num_atoms);
+//! 
+//! // read the first trame of the trajectory
+//! let result = trj.read(&mut frame);
+//! match result {
+//!    Ok(_) => {
+//!        assert_eq!(frame.step, 1);
+//!        assert_eq!(frame.num_atoms, num_atoms);
+//! 
+//!        let first_atom_coords = frame.coords[0];
+//!        assert_eq!(first_atom_coords, [-0.8901, 0.4127, -0.055499997]);
+//!    }
+//!    Err(msg) => {
+//!        panic!("Something went wrong: {}", msg);    
+//!    }
+//! }
+//! ``` 
+
+
 #[cfg(test)]
 #[macro_use] extern crate assert_approx_eq;
+extern crate lazy_init;
 
 mod frame;
 pub mod c_abi; 
@@ -25,7 +66,7 @@ pub enum FileMode {
 
 impl FileMode {
     pub fn value(&self) -> &str {
-        return match *self {
+        match *self {
             FileMode::Write => "w",
             FileMode::Append => "a",
             FileMode::Read => "r",
@@ -37,6 +78,7 @@ fn path_to_cstring(path: &Path) -> CString {
         CString::new(path.to_str().unwrap()).unwrap()
     }
 
+/// A safe wrapper around the c implementation of an XDRFile
 struct XDRFile {
     xdrfile: *mut XDRFILE,
     filemode: FileMode,
@@ -54,16 +96,16 @@ impl XDRFile {
         
             if ! xdrfile.is_null() {
                 let path = String::from(path.to_str().unwrap());
-                return Ok(XDRFile { xdrfile, filemode, path });
+                Ok(XDRFile { xdrfile, filemode, path })
             } else {  // Something went wrong. But the C api does not tell us what
-                return Err(err_msg("Failed to open trajectory file"));
+                Err(err_msg("Failed to open trajectory file"))
             }
         }
     }
 }
 
 impl Drop for XDRFile {
-    // Close the underlying xdr file on drop
+    /// Close the underlying xdr file on drop
     fn drop(&mut self) {
         unsafe {
             xdrfile::xdrfile_close(self.xdrfile);
@@ -71,13 +113,23 @@ impl Drop for XDRFile {
     } 
 }
 
+/// The trajectory trait defines shared methods for xtc and trr trajectories
 pub trait Trajectory {
+
+    /// Read the next step of the trajectory into the frame object
     fn read(&mut self, frame: &mut Frame) -> Result<(), Error>;
+
+    /// Write the frame to the trajectory file
     fn write(&mut self, frame: &Frame) -> Result<(), Error>;
+    
+    /// Flush the trajectory file
     fn flush(&mut self) -> Result<(), Error>;
+
+    /// Get the number of atoms from the give trajectory
     fn get_num_atoms(&mut self) -> Result<u32, Error>; 
 }
 
+/// Read/Write XTC Trajectories
 pub struct XTCTrajectory {
     handle: XDRFile,
     precision: Cell<f32>,  // internal mutability required for read method
@@ -162,6 +214,8 @@ impl Trajectory for XTCTrajectory {
     }
 }
 
+
+/// Read/Write TRR Trajectories
 pub struct TRRTrajectory {
     handle: XDRFile,
     num_atoms: Lazy<Result<u32, Error>>
