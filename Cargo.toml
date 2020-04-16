@@ -1,0 +1,18 @@
+[package]
+name = "xdrfile"
+version = "0.1.0"
+authors = ["Daniel Bauer <bauer@cbs.tu-darmstadt.de>"]
+license = "GNU"
+edition = "2018"
+description = "Wrapper around the gromacs libxdrfile library. Can be used to read and write gromacs trajectories in xtc and trr format."
+build = "build.rs"
+
+[dependencies]
+failure = "0.1"
+lazy-init = "0.3"
+
+[dev-dependencies]
+tempfile = "3.1.0"
+
+[build-dependencies]
+cc = { version = "1.0", features = ["parallel" ]}
