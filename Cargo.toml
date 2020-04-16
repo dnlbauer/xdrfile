@@ -2,7 +2,7 @@
 name = "xdrfile"
 version = "0.1.0"
 authors = ["Daniel Bauer <bauer@cbs.tu-darmstadt.de>"]
-license = "GNU"
+license = "LGPL-3.0-only"
 edition = "2018"
 description = "Wrapper around the gromacs libxdrfile library. Can be used to read and write gromacs trajectories in xtc and trr format."
 build = "build.rs"
