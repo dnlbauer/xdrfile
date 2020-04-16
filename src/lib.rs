@@ -21,7 +21,7 @@
 //! // without instantiating data arrays for every step
 //! let mut frame = Frame::with_capacity(num_atoms);
 //! 
-//! // read the first trame of the trajectory
+//! // read the first frame of the trajectory
 //! let result = trj.read(&mut frame);
 //! match result {
 //!    Ok(_) => {
@@ -35,7 +35,28 @@
 //!        panic!("Something went wrong: {}", msg);    
 //!    }
 //! }
-//! ``` 
+//! ```
+//!
+//! # Frame iteration
+//! For convenience, the trajectory implementations provide "into_iter" to
+//! be turned into an iterator that yields Rc<Frame>. If a frame is not kept
+//! during iteration, the Iterator reuses it for better performance (and hence,
+//! Rc is required)
+//!
+//! ```rust
+//! use xdrfile::*;
+//! use std::path::Path; 
+//!
+//! let mut path = Path::new("tests/1l2y.xtc");
+//! // get a handle to the file
+//! let trj = XTCTrajectory::open(path, FileMode::Read).unwrap();
+//! 
+//! // iterate over all frames
+//! for (idx, frame) in trj.into_iter().filter_map(Result::ok).enumerate() {
+//!     println!("{}", frame.time);
+//!     assert_eq!(idx+1, frame.step as usize);
+//! }
+//! ```
 
 
 #[cfg(test)]
@@ -43,8 +64,10 @@
 extern crate lazy_init;
 
 mod frame;
+mod iterator;
 pub mod c_abi; 
 pub use frame::Frame;
+pub use iterator::*;
 
 use c_abi::xdrfile;
 use c_abi::xdrfile::XDRFILE;
