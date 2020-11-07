@@ -62,8 +62,10 @@ extern crate assert_approx_eq;
 extern crate lazy_init;
 
 pub mod c_abi;
+mod errors;
 mod frame;
 mod iterator;
+pub use errors::*;
 pub use frame::Frame;
 pub use iterator::*;
 
@@ -77,75 +79,6 @@ use lazy_init::Lazy;
 use std::cell::Cell;
 use std::ffi::CString;
 use std::path::{Path, PathBuf};
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum Error {
-    CouldNotOpenFile(std::path::PathBuf, FileMode),
-    CouldNotReadAtomNumber(u32),
-    CouldNotRead(u32),
-    CouldNotWrite(u32),
-    CouldNotFlush(u32),
-    PathInvalidCstring,
-}
-
-impl std::fmt::Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        use Error::*;
-        match self {
-            CouldNotOpenFile(path, mode) => write!(
-                f,
-                "Failed to open file at {path:?} with mode {mode:?}",
-                path = path,
-                mode = mode
-            ),
-            CouldNotReadAtomNumber(code) => write!(
-                f,
-                "Failed to read atom number from trajectory: C API returned error code {}",
-                code
-            ),
-            CouldNotRead(code) => write!(
-                f,
-                "Failed to read trajectory: C API returned error code {}",
-                code
-            ),
-            CouldNotWrite(code) => write!(
-                f,
-                "Failed to write trajectory: C API returned error code {}",
-                code
-            ),
-            CouldNotFlush(code) => write!(
-                f,
-                "Failed to flush trajectory: C API returned error code {}",
-                code
-            ),
-            PathInvalidCstring => write!(
-                f,
-                "Path cannot be converted to a C string because it has a 0 byte"
-            ),
-        }
-    }
-}
-
-impl Error {
-    pub fn is_eof(&self) -> bool {
-        use Error::*;
-        match self {
-            &CouldNotReadAtomNumber(code)
-            | &CouldNotRead(code)
-            | &CouldNotWrite(code)
-            | &CouldNotFlush(code)
-                if code == xdrfile::exdrENDOFFILE =>
-            {
-                true
-            }
-            _ => false,
-        }
-    }
-}
-
-impl std::error::Error for Error {}
-
-pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum FileMode {
@@ -168,8 +101,8 @@ impl FileMode {
 }
 
 fn path_to_cstring(path: impl AsRef<Path>) -> Result<CString> {
-    let s = path.as_ref().to_str().ok_or(Error::PathInvalidCstring)?;
-    CString::new(s).map_err(|_| Error::PathInvalidCstring)
+    let s = path.as_ref().to_str().ok_or_else(Error::from_convert)?;
+    Ok(CString::new(s)?)
 }
 
 /// A safe wrapper around the c implementation of an XDRFile
@@ -202,7 +135,7 @@ impl XDRFile {
                 })
             } else {
                 // Something went wrong. But the C api does not tell us what
-                Err(Error::CouldNotOpenFile(path.into(), filemode))
+                Err(Error::from_open(path, filemode))
             }
         }
     }
@@ -282,9 +215,9 @@ impl Trajectory for XTCTrajectory {
                 &mut self.precision.get(),
             ) as u32;
             frame.step = step as u32;
-            match code {
-                xdrfile::exdrOK => Ok(()),
-                _ => Err(Error::CouldNotRead(code)),
+            match code.into() {
+                ErrorCode::ExdrOk => Ok(()),
+                _ => Err(Error::from_read(code)),
             }
         }
     }
@@ -300,9 +233,9 @@ impl Trajectory for XTCTrajectory {
                 frame.coords[..].as_ptr() as *mut [f32; 3],
                 1000.0,
             ) as u32;
-            match code {
-                xdrfile::exdrOK => Ok(()),
-                _ => Err(Error::CouldNotWrite(code)),
+            match code.into() {
+                ErrorCode::ExdrOk => Ok(()),
+                _ => Err(Error::from_write(code)),
             }
         }
     }
@@ -310,9 +243,9 @@ impl Trajectory for XTCTrajectory {
     fn flush(&mut self) -> Result<()> {
         unsafe {
             let code = xdr_seek::xdr_flush(self.handle.xdrfile) as u32;
-            match code {
-                xdrfile::exdrOK => Ok(()),
-                _ => Err(Error::CouldNotFlush(code)),
+            match code.into() {
+                ErrorCode::ExdrOk => Ok(()),
+                _ => Err(Error::from_flush(code)),
             }
         }
     }
@@ -328,9 +261,10 @@ impl Trajectory for XTCTrajectory {
                         xdrfile_xtc::read_xtc_natoms(path_p, &mut num_atoms as *const i32) as u32;
                     // Reconstitute the CString so it is deallocated correctly
                     let _ = CString::from_raw(path_p);
-                    match code {
-                        xdrfile::exdrOK => Ok(num_atoms as u32),
-                        _ => Err(Error::CouldNotReadAtomNumber(code)),
+
+                    match code.into() {
+                        ErrorCode::ExdrOk => Ok(num_atoms as u32),
+                        _ => Err(Error::from_read_num_atoms(code)),
                     }
                 }
             })
@@ -390,9 +324,9 @@ impl Trajectory for TRRTrajectory {
                 std::ptr::null_mut(),
             ) as u32;
             frame.step = step as u32;
-            match code {
-                xdrfile::exdrOK => Ok(()),
-                _ => Err(Error::CouldNotRead(code)),
+            match code.into() {
+                ErrorCode::ExdrOk => Ok(()),
+                _ => Err(Error::from_read(code)),
             }
         }
     }
@@ -410,9 +344,9 @@ impl Trajectory for TRRTrajectory {
                 std::ptr::null_mut(),
                 std::ptr::null_mut(),
             ) as u32;
-            match code {
-                xdrfile::exdrOK => Ok(()),
-                _ => Err(Error::CouldNotWrite(code)),
+            match code.into() {
+                ErrorCode::ExdrOk => Ok(()),
+                _ => Err(Error::from_write(code)),
             }
         }
     }
@@ -420,9 +354,9 @@ impl Trajectory for TRRTrajectory {
     fn flush(&mut self) -> Result<()> {
         unsafe {
             let code = xdr_seek::xdr_flush(self.handle.xdrfile) as u32;
-            match code {
-                xdrfile::exdrOK => Ok(()),
-                _ => Err(Error::CouldNotFlush(code)),
+            match code.into() {
+                ErrorCode::ExdrOk => Ok(()),
+                _ => Err(Error::from_flush(code)),
             }
         }
     }
@@ -438,9 +372,10 @@ impl Trajectory for TRRTrajectory {
                         xdrfile_trr::read_trr_natoms(path_p, &mut num_atoms as *const i32) as u32;
                     // Reconstitute the CString so it is deallocated correctly
                     let _ = CString::from_raw(path_p);
-                    match code {
-                        xdrfile::exdrOK => Ok(num_atoms as u32),
-                        _ => Err(Error::CouldNotReadAtomNumber(code)),
+
+                    match code.into() {
+                        ErrorCode::ExdrOk => Ok(num_atoms as u32),
+                        _ => Err(Error::from_read_num_atoms(code)),
                     }
                 }
             })
@@ -536,9 +471,21 @@ mod tests {
 
     #[test]
     fn test_path_to_cstring() -> Result<(), Box<dyn std::error::Error>> {
-        let result_invalid = path_to_cstring("invalid/\0path");
+        let result_invalid = path_to_cstring(PathBuf::from("invalid/\0path"));
 
-        assert_eq!(result_invalid, Err(Error::PathInvalidCstring));
+        assert_eq!(
+            result_invalid,
+            CString::new("invalid/\0path").map_err(Error::from)
+        );
+        assert!(!result_invalid.is_ok());
+        if let Err(e) = result_invalid {
+            match e.task() {
+                ErrorTask::ToCString(_) => (),
+                _ => panic!("path_to_cstring's errortask should be ErrorTask::ToCString(_)"),
+            }
+        } else {
+            panic!("path_to_cstring on a NULL-containing string should return an error");
+        }
 
         let result_valid = path_to_cstring("valid/path");
 
@@ -549,12 +496,13 @@ mod tests {
     #[test]
     fn test_err_could_not_open() {
         let file_name = "non-existent.xtc";
-        let expexted_path = Path::new(&file_name);
+
+        let path = Path::new(&file_name);
         if let Err(e) = XDRFile::open(file_name, FileMode::Read) {
-            match e {
-                Error::CouldNotOpenFile(err_path, err_mode) => {
-                    assert_eq!(expexted_path, err_path);
-                    assert!(FileMode::Read == err_mode)
+            match e.task() {
+                ErrorTask::OpenFile(err_path, err_mode) => {
+                    assert_eq!(path, err_path);
+                    assert_eq!(FileMode::Read, *err_mode)
                 }
                 _ => panic!("Wrong Error type"),
             }
@@ -566,9 +514,9 @@ mod tests {
         let file_name = "README.md"; // not a trajectory
         let mut trr = TRRTrajectory::open_read(file_name)?;
         if let Err(e) = trr.get_num_atoms() {
-            match e {
-                Error::CouldNotReadAtomNumber(code) => {
-                    assert_eq!(xdrfile::exdrMAGIC, code);
+            match e.task() {
+                ErrorTask::ReadNumAtoms => {
+                    assert_eq!(Some(ErrorCode::ExdrMagic), *e.code());
                 }
                 _ => panic!("Wrong Error type"),
             }
@@ -582,32 +530,14 @@ mod tests {
         let mut frame = Frame::with_capacity(1);
         let mut trr = TRRTrajectory::open_read(file_name)?;
         if let Err(e) = trr.read(&mut frame) {
-            match e {
-                Error::CouldNotRead(code) => {
-                    assert_eq!(xdrfile::exdrMAGIC, code);
+            match e.task() {
+                ErrorTask::Read => {
+                    assert_eq!(Some(ErrorCode::ExdrMagic), *e.code());
                 }
                 _ => panic!("Wrong Error type"),
             }
         }
         Ok(())
-    }
-
-    #[test]
-    fn test_err_eof() {
-        let error = Error::CouldNotRead(xdrfile::exdrENDOFFILE);
-        assert!(error.is_eof());
-
-        let error = Error::CouldNotRead(xdrfile::exdrENDOFFILE + 1);
-        assert!(!error.is_eof());
-
-        let error = Error::CouldNotWrite(0);
-        assert!(!error.is_eof());
-
-        let error = Error::CouldNotFlush(255);
-        assert!(!error.is_eof());
-
-        let error = Error::CouldNotOpenFile(PathBuf::from("not/a/file"), FileMode::Read);
-        assert!(!error.is_eof());
     }
 
     #[test]
