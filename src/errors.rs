@@ -86,46 +86,34 @@ impl From<std::ffi::NulError> for Error {
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use ErrorTask::*;
-        match (&self.task, &self.code) {
-            (OpenFile(path, mode), _) => write!(
+        match &self.task {
+            OpenFile(path, mode) => write!(
                 f,
                 "Failed to open file at {path:?} with mode {mode:?}",
                 path = path,
                 mode = mode
             ),
-            (ReadNumAtoms, Some(code)) => write!(
-                f,
-                "Failed to read atom number from trajectory: C API returned error code {}",
-                code
-            ),
-            (ReadNumAtoms, None) => write!(f, "Failed to read atom number from trajectory"),
-            (Read, Some(code)) => write!(
-                f,
-                "Failed to read trajectory: C API returned error code {}",
-                code
-            ),
-            (Read, None) => write!(f, "Failed to read trajectory"),
-            (Write, Some(code)) => write!(
-                f,
-                "Failed to write trajectory: C API returned error code {}",
-                code
-            ),
-            (Write, None) => write!(f, "Failed to write trajectory"),
-            (Flush, Some(code)) => write!(
-                f,
-                "Failed to flush trajectory: C API returned error code {}",
-                code
-            ),
-            (ToCString(_), _) => write!(
+            ReadNumAtoms => write!(f, "Failed to read atom number from trajectory"),
+            Read => write!(f, "Failed to read trajectory"),
+            Write => write!(f, "Failed to write trajectory"),
+            Flush => write!(f, "Failed to flush trajectory"),
+            ToCString(_) => write!(
                 f,
                 "Path cannot be converted to a C string because it has a null byte"
             ),
-            (Flush, None) => write!(f, "Failed to flush trajectory"),
         }
     }
 }
 
-impl std::error::Error for Error {}
+impl std::error::Error for Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        if let Some(e) = &self.code {
+            Some(e)
+        } else {
+            None
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ErrorCode {
@@ -180,13 +168,14 @@ impl From<c_abi::xdrfile::BindgenTy1> for ErrorCode {
 impl std::fmt::Display for ErrorCode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if let Self::UnmatchedCode(i) = self {
-            write!(f, "{}", i)
+            write!(f, "C API returned error code {}", i)
         } else {
-            write!(f, "{:?}", self)
+            write!(f, "C API returned error code {:?}", self)
         }
     }
 }
 
+impl std::error::Error for ErrorCode {}
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 #[cfg(test)]
