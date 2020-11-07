@@ -157,7 +157,8 @@ struct XDRFile {
 }
 
 impl XDRFile {
-    pub fn open(path: &Path, filemode: FileMode) -> Result<XDRFile> {
+    pub fn open(path: impl AsRef<Path>, filemode: FileMode) -> Result<XDRFile> {
+        let path = path.as_ref();
         let path_p = path_to_cstring(path).into_raw();
         let mode_p = CString::new(filemode.value()).unwrap().into_raw();
 
@@ -211,7 +212,7 @@ pub struct XTCTrajectory {
 }
 
 impl XTCTrajectory {
-    pub fn open(path: &Path, filemode: FileMode) -> Result<XTCTrajectory> {
+    pub fn open(path: impl AsRef<Path>, filemode: FileMode) -> Result<XTCTrajectory> {
         let xdr = XDRFile::open(path, filemode)?;
         Ok(XTCTrajectory {
             handle: xdr,
@@ -299,7 +300,7 @@ pub struct TRRTrajectory {
 }
 
 impl TRRTrajectory {
-    pub fn open(path: &Path, filemode: FileMode) -> Result<TRRTrajectory> {
+    pub fn open(path: impl AsRef<Path>, filemode: FileMode) -> Result<TRRTrajectory> {
         let xdr = XDRFile::open(path, filemode)?;
         Ok(TRRTrajectory {
             handle: xdr,
