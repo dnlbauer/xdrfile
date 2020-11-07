@@ -3,34 +3,46 @@ use crate::FileMode;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, PartialEq)]
+/// The task being attempted when an error was returned
 pub enum ErrorTask {
+    /// A file was being opened
     OpenFile(PathBuf, FileMode),
+    /// The number of atoms was being read from a file
     ReadNumAtoms,
+    /// A frame was being read from a file
     Read,
+    /// A frame was being written to a file
     Write,
+    /// An file was being flushed to disk
     Flush,
+    /// A path was being converted to a CString
     ToCString(Option<std::ffi::NulError>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
+/// Error type for the xdrfile library
 pub struct Error {
     code: Option<ErrorCode>,
     task: ErrorTask,
 }
 
 impl Error {
+    /// Get the task being attempted when the error was returned
     pub fn task(&self) -> &ErrorTask {
         &self.task
     }
 
+    /// Get the error code returned by the C API, if any
     pub fn code(&self) -> &Option<ErrorCode> {
         &self.code
     }
 
+    /// True if the error is an end of file error, false otherwise
     pub fn is_eof(&self) -> bool {
         self.code.as_ref().map_or(false, ErrorCode::is_eof)
     }
 
+    /// Construct a new error during the ToCString task
     pub(crate) fn from_convert() -> Self {
         Self {
             code: None,
@@ -38,6 +50,7 @@ impl Error {
         }
     }
 
+    /// Construct a new error during the OpenFile task
     pub(crate) fn from_open(path: impl AsRef<Path>, mode: FileMode) -> Self {
         Self {
             code: None,
@@ -45,6 +58,7 @@ impl Error {
         }
     }
 
+    /// Construct a new error during the ReadNumAtoms task from a C error code
     pub(crate) fn from_read_num_atoms(code: impl Into<ErrorCode>) -> Self {
         Self {
             code: Some(code.into()),
@@ -52,6 +66,7 @@ impl Error {
         }
     }
 
+    /// Construct a new error during the Read task from a C error code
     pub(crate) fn from_read(code: impl Into<ErrorCode>) -> Self {
         Self {
             code: Some(code.into()),
@@ -59,6 +74,7 @@ impl Error {
         }
     }
 
+    /// Construct a new error during the Write task from a C error code
     pub(crate) fn from_write(code: impl Into<ErrorCode>) -> Self {
         Self {
             code: Some(code.into()),
@@ -66,6 +82,7 @@ impl Error {
         }
     }
 
+    /// Construct a new error during the Flush task from a C error code
     pub(crate) fn from_flush(code: impl Into<ErrorCode>) -> Self {
         Self {
             code: Some(code.into()),
@@ -116,25 +133,42 @@ impl std::error::Error for Error {
 }
 
 #[derive(Debug, Clone, PartialEq, Copy)]
+/// Error codes returned from the C API
 pub enum ErrorCode {
+    /// No error, C API returned successfully
     ExdrOk,
+    /// TRR file had corrupt Header
     ExdrHeader,
+    /// Failed to read a string where expected
     ExdrString,
+    /// Failed to read a double where expected
     ExdrDouble,
+    /// Failed to read an int where expected
     ExdrInt,
+    /// Failed to read a float where expected
     ExdrFloat,
+    /// Failed to read a uint where expected
     ExdrUint,
+    /// Failed to read compressed XTC coordinates
     Exdr3dx,
+    /// Error encountered while closing file
     ExdrClose,
+    /// File had incorrect "magic number" (not an XTC file)
     ExdrMagic,
+    /// Failed to allocate memory for TRR file
     ExdrNoMem,
+    /// End of file was reached while trying to read
     ExdrEndOfFile,
+    /// File was not found when trying to open
     ExdrFileNotFound,
+    /// Failed to seek within file
     ExdrNr,
+    /// Something unexpected happened
     UnmatchedCode(c_abi::xdrfile::BindgenTy1),
 }
 
 impl ErrorCode {
+    /// True if the error is an end of file error, false otherwise
     pub fn is_eof(&self) -> bool {
         match self {
             Self::ExdrEndOfFile => true,
@@ -142,6 +176,12 @@ impl ErrorCode {
         }
     }
 
+    /// Convert an error code and output value from a C call to a Result
+    ///
+    /// `code` should be an integer return code returned from the C API. `value` should be the
+    /// function's output, which is generally either `()` or one of its arguments. If `code`
+    /// indicates the function returned successfully, the value is returned; otherwise, the
+    /// code is converted into the appropriate `ErrorCode`.
     pub fn check<T>(code: impl Into<Self>, value: T) -> std::result::Result<T, Self> {
         let code = code.into();
         if let Self::ExdrOk = code {
@@ -185,6 +225,8 @@ impl std::fmt::Display for ErrorCode {
 }
 
 impl std::error::Error for ErrorCode {}
+
+/// `Result` type for errors in the `xdrfile` crate
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 #[cfg(test)]
