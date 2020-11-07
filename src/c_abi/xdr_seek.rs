@@ -103,12 +103,11 @@ extern "C" {
     pub fn xdr_flush(xd: *mut XDRFILE) -> ::std::os::raw::c_int;
 }
 
-
 #[cfg(test)]
 mod tests {
 
-    use super::*;
     use super::super::xdrfile_xtc::*;
+    use super::*;
     use std::ffi::CString;
 
     #[test]
@@ -119,8 +118,8 @@ mod tests {
         let mut step: i32 = 5;
         let box_vec = [[0.0; 3]; 3];
         let x_p = std::ptr::null_mut();
-        let mut prec: f32 = 0.0; 
-        
+        let mut prec: f32 = 0.0;
+
         unsafe {
             let mode = CString::new("r").unwrap();
             let xdr = xdrfile_open(path.as_ptr(), mode.as_ptr());
@@ -129,20 +128,25 @@ mod tests {
             let tell = xdr_tell(xdr);
             assert!(tell == 0, "{}", tell);
 
-            read_xtc(xdr, num_atoms, &mut step, &mut time,
+            read_xtc(
+                xdr,
+                num_atoms,
+                &mut step,
+                &mut time,
                 box_vec.as_ptr() as *mut Matrix,
                 x_p,
-                &mut prec);
+                &mut prec,
+            );
 
             let tell = xdr_tell(xdr);
             assert!(tell > 0, "{}", tell);
-        }   
+        }
     }
 
     #[test]
     fn test_xdr_seek() {
         let path = CString::new("tests/1l2y.xtc").unwrap();
-        
+
         unsafe {
             let mode = CString::new("r").unwrap();
             let xdr = xdrfile_open(path.as_ptr(), mode.as_ptr());
@@ -152,9 +156,9 @@ mod tests {
             assert!(tell == 0, "{}", tell);
 
             xdr_seek(xdr, 500, 0);
-            
+
             let tell = xdr_tell(xdr);
             assert!(tell == 500, "{}", tell);
-        }   
+        }
     }
 }

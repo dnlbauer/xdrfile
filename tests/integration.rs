@@ -1,9 +1,9 @@
 #[cfg(test)]
 mod integration {
 
+    use std::path::Path;
     use std::rc::Rc;
     use xdrfile::*;
-    use std::path::Path;
 
     #[test]
     fn test_use_library() {
@@ -25,8 +25,7 @@ mod integration {
         let trj = XTCTrajectory::open(path, FileMode::Read).unwrap();
         let frames: Vec<Rc<Frame>> = trj.into_iter().filter_map(Result::ok).collect();
         for (idx, frame) in frames.iter().enumerate() {
-            assert_eq!(frame.step as usize, idx+1);
+            assert_eq!(frame.step as usize, idx + 1);
         }
     }
-
 }

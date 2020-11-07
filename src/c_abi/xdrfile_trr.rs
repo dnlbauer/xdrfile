@@ -1,6 +1,5 @@
 use super::xdrfile::*;
 
-
 extern "C" {
     pub fn read_trr_natoms(
         fn_: *const ::std::os::raw::c_char,
@@ -10,7 +9,7 @@ extern "C" {
 extern "C" {
     pub fn read_trr_nframes(
         fn_: *const ::std::os::raw::c_char,
-        nframes: *const ::std::os::raw::c_ulong, 
+        nframes: *const ::std::os::raw::c_ulong,
     ) -> ::std::os::raw::c_int;
 }
 extern "C" {
@@ -61,7 +60,7 @@ mod tests {
     #[test]
     fn test_read_trr_nframes() {
         let path = CString::new("tests/1l2y.trr").unwrap();
-        let mut nframes: u64 = 0; 
+        let mut nframes: u64 = 0;
 
         unsafe {
             let code = read_trr_nframes(path.as_ptr() as *const i8, &mut nframes);
@@ -83,19 +82,25 @@ mod tests {
 
         let box_vec: Matrix = [[1.0, 2.0, 3.0], [2.0, 1.0, 3.0], [3.0, 2.0, 1.0]];
         let x: Vec<Rvec> = vec![[1.0, 1.0, 1.0], [1.0, 1.0, 1.0]];
-        let v: Vec<Rvec>  = vec![[1.0, 1.0, 1.0], [1.0, 1.0, 1.0]];
+        let v: Vec<Rvec> = vec![[1.0, 1.0, 1.0], [1.0, 1.0, 1.0]];
         let f: Vec<Rvec> = vec![[1.0, 1.0, 1.0], [1.0, 1.0, 1.0]];
-        
+
         unsafe {
             let mode = CString::new("w").unwrap();
             let xdr = xdrfile_open(tmp_path.as_ptr(), mode.as_ptr());
-            let write_code = write_trr(xdr, natoms, step, time, lambda,
+            let write_code = write_trr(
+                xdr,
+                natoms,
+                step,
+                time,
+                lambda,
                 box_vec.as_ptr() as *mut Matrix,
                 x.as_ptr() as *mut Rvec,
                 v.as_ptr() as *mut Rvec,
-                f.as_ptr() as *mut Rvec);
+                f.as_ptr() as *mut Rvec,
+            );
             assert!(write_code as u32 == exdrOK);
-            xdrfile_close(xdr); 
+            xdrfile_close(xdr);
         }
 
         // read atoms from tempfile
@@ -111,13 +116,19 @@ mod tests {
         unsafe {
             let mode = CString::new("r").unwrap();
             let xdr = xdrfile_open(tmp_path.as_ptr(), mode.as_ptr());
-            let read_code = read_trr(xdr, natoms, &mut step2, &mut time2,
-                &mut lambda2, box_vec2.as_ptr() as *mut Matrix,
+            let read_code = read_trr(
+                xdr,
+                natoms,
+                &mut step2,
+                &mut time2,
+                &mut lambda2,
+                box_vec2.as_ptr() as *mut Matrix,
                 x2.as_ptr() as *mut Rvec,
                 v2.as_ptr() as *mut Rvec,
-                f2.as_ptr() as *mut Rvec);
+                f2.as_ptr() as *mut Rvec,
+            );
             assert!(read_code as u32 == exdrOK);
-            xdrfile_close(xdr); 
+            xdrfile_close(xdr);
         }
 
         // make sure everything is still the same
@@ -129,5 +140,4 @@ mod tests {
         assert!(v2 == v);
         assert!(f2 == f);
     }
-
 }
