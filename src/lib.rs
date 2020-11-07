@@ -75,12 +75,59 @@ use c_abi::xdrfile::XDRFILE;
 use c_abi::xdrfile_trr;
 use c_abi::xdrfile_xtc;
 
-use failure::{err_msg, Error};
 use lazy_init::Lazy;
 use std::cell::Cell;
 use std::ffi::CString;
 use std::path::Path;
 
+#[derive(Debug, Clone)]
+pub enum Error {
+    CouldNotOpenFile(std::path::PathBuf, FileMode),
+    CouldNotReadAtomNumber(u32),
+    CouldNotRead(u32),
+    CouldNotWrite(u32),
+    CouldNotFlush(u32),
+}
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use Error::*;
+        match self {
+            CouldNotOpenFile(path, mode) => write!(
+                f,
+                "Failed to open file at {path:?} with mode {mode:?}",
+                path = path,
+                mode = mode
+            ),
+            CouldNotReadAtomNumber(code) => write!(
+                f,
+                "Failed to read atom number from trajectory: C API returned error code {}",
+                code
+            ),
+            CouldNotRead(code) => write!(
+                f,
+                "Failed to read trajectory: C API returned error code {}",
+                code
+            ),
+            CouldNotWrite(code) => write!(
+                f,
+                "Failed to write trajectory: C API returned error code {}",
+                code
+            ),
+            CouldNotFlush(code) => write!(
+                f,
+                "Failed to flush trajectory: C API returned error code {}",
+                code
+            ),
+        }
+    }
+}
+
+impl std::error::Error for Error {}
+
+type Result<T> = std::result::Result<T, Error>;
+
+#[derive(Debug, Clone)]
 pub enum FileMode {
     Write,
     Append,
@@ -110,7 +157,7 @@ struct XDRFile {
 }
 
 impl XDRFile {
-    pub fn open(path: &Path, filemode: FileMode) -> Result<XDRFile, Error> {
+    pub fn open(path: &Path, filemode: FileMode) -> Result<XDRFile> {
         let path_p = path_to_cstring(path).into_raw();
         let mode_p = CString::new(filemode.value()).unwrap().into_raw();
 
@@ -126,7 +173,7 @@ impl XDRFile {
                 })
             } else {
                 // Something went wrong. But the C api does not tell us what
-                Err(err_msg("Failed to open trajectory file"))
+                Err(Error::CouldNotOpenFile(path.into(), filemode))
             }
         }
     }
@@ -144,27 +191,27 @@ impl Drop for XDRFile {
 /// The trajectory trait defines shared methods for xtc and trr trajectories
 pub trait Trajectory {
     /// Read the next step of the trajectory into the frame object
-    fn read(&mut self, frame: &mut Frame) -> Result<(), Error>;
+    fn read(&mut self, frame: &mut Frame) -> Result<()>;
 
     /// Write the frame to the trajectory file
-    fn write(&mut self, frame: &Frame) -> Result<(), Error>;
+    fn write(&mut self, frame: &Frame) -> Result<()>;
 
     /// Flush the trajectory file
-    fn flush(&mut self) -> Result<(), Error>;
+    fn flush(&mut self) -> Result<()>;
 
     /// Get the number of atoms from the give trajectory
-    fn get_num_atoms(&mut self) -> Result<u32, Error>;
+    fn get_num_atoms(&mut self) -> Result<u32>;
 }
 
 /// Read/Write XTC Trajectories
 pub struct XTCTrajectory {
     handle: XDRFile,
     precision: Cell<f32>, // internal mutability required for read method
-    num_atoms: Lazy<Result<u32, Error>>,
+    num_atoms: Lazy<Result<u32>>,
 }
 
 impl XTCTrajectory {
-    pub fn open(path: &Path, filemode: FileMode) -> Result<XTCTrajectory, Error> {
+    pub fn open(path: &Path, filemode: FileMode) -> Result<XTCTrajectory> {
         let xdr = XDRFile::open(path, filemode)?;
         Ok(XTCTrajectory {
             handle: xdr,
@@ -175,7 +222,7 @@ impl XTCTrajectory {
 }
 
 impl Trajectory for XTCTrajectory {
-    fn read(&mut self, frame: &mut Frame) -> Result<(), Error> {
+    fn read(&mut self, frame: &mut Frame) -> Result<()> {
         unsafe {
             // C lib requires an i32 to be passed, but step is exposed it as u32
             // (A step cannot be negative, can it?). So we need to create a step
@@ -193,15 +240,12 @@ impl Trajectory for XTCTrajectory {
             frame.step = step as u32;
             match code {
                 xdrfile::exdrOK => Ok(()),
-                _ => Err(err_msg(format!(
-                    "Failed to read trajectory. Error code: {}",
-                    code
-                ))),
+                _ => Err(Error::CouldNotRead(code)),
             }
         }
     }
 
-    fn write(&mut self, frame: &Frame) -> Result<(), Error> {
+    fn write(&mut self, frame: &Frame) -> Result<()> {
         unsafe {
             let code = xdrfile_xtc::write_xtc(
                 self.handle.xdrfile,
@@ -214,60 +258,48 @@ impl Trajectory for XTCTrajectory {
             ) as u32;
             match code {
                 xdrfile::exdrOK => Ok(()),
-                _ => Err(err_msg(format!(
-                    "Failed to write trajectory. Error code: {}",
-                    code
-                ))),
+                _ => Err(Error::CouldNotWrite(code)),
             }
         }
     }
 
-    fn flush(&mut self) -> Result<(), Error> {
+    fn flush(&mut self) -> Result<()> {
         unsafe {
             let code = xdr_seek::xdr_flush(self.handle.xdrfile) as u32;
             match code {
                 xdrfile::exdrOK => Ok(()),
-                _ => Err(err_msg(format!(
-                    "Failed to flush trajectory. Error code: {}",
-                    code
-                ))),
+                _ => Err(Error::CouldNotFlush(code)),
             }
         }
     }
 
-    fn get_num_atoms(&mut self) -> Result<u32, Error> {
-        let result = self.num_atoms.get_or_create(|| {
-            let mut num_atoms: i32 = 0;
-            unsafe {
-                let path = CString::new(self.handle.path.as_str()).unwrap();
-                let path_p = path.into_raw();
-                let code =
-                    xdrfile_xtc::read_xtc_natoms(path_p, &mut num_atoms as *const i32) as u32;
-                match code {
-                    xdrfile::exdrOK => Ok(num_atoms as u32),
-                    _ => Err(err_msg(format!(
-                        "Failed to read atom number from trajectory. Error code: {}",
-                        code
-                    ))),
+    fn get_num_atoms(&mut self) -> Result<u32> {
+        self.num_atoms
+            .get_or_create(|| {
+                let mut num_atoms: i32 = 0;
+                unsafe {
+                    let path = CString::new(self.handle.path.as_str()).unwrap();
+                    let path_p = path.into_raw();
+                    let code =
+                        xdrfile_xtc::read_xtc_natoms(path_p, &mut num_atoms as *const i32) as u32;
+                    match code {
+                        xdrfile::exdrOK => Ok(num_atoms as u32),
+                        _ => Err(Error::CouldNotReadAtomNumber(code)),
+                    }
                 }
-            }
-        });
-        match result {
-            Ok(val) => Ok(*val),
-            // ugly hack because failure::Error is not "Clone"
-            Err(err) => Err(err_msg(format!("{}", err))),
-        }
+            })
+            .clone()
     }
 }
 
 /// Read/Write TRR Trajectories
 pub struct TRRTrajectory {
     handle: XDRFile,
-    num_atoms: Lazy<Result<u32, Error>>,
+    num_atoms: Lazy<Result<u32>>,
 }
 
 impl TRRTrajectory {
-    pub fn open(path: &Path, filemode: FileMode) -> Result<TRRTrajectory, Error> {
+    pub fn open(path: &Path, filemode: FileMode) -> Result<TRRTrajectory> {
         let xdr = XDRFile::open(path, filemode)?;
         Ok(TRRTrajectory {
             handle: xdr,
@@ -277,7 +309,7 @@ impl TRRTrajectory {
 }
 
 impl Trajectory for TRRTrajectory {
-    fn read(&mut self, frame: &mut Frame) -> Result<(), Error> {
+    fn read(&mut self, frame: &mut Frame) -> Result<()> {
         unsafe {
             // C lib requires an i32 to be passed, but step is exposed it as u32
             // (A step cannot be negative, can it?). So we need to create a step
@@ -299,15 +331,12 @@ impl Trajectory for TRRTrajectory {
             frame.step = step as u32;
             match code {
                 xdrfile::exdrOK => Ok(()),
-                _ => Err(err_msg(format!(
-                    "Failed to read trajectory. Error code: {}",
-                    code
-                ))),
+                _ => Err(Error::CouldNotRead(code)),
             }
         }
     }
 
-    fn write(&mut self, frame: &Frame) -> Result<(), Error> {
+    fn write(&mut self, frame: &Frame) -> Result<()> {
         unsafe {
             let code = xdrfile_trr::write_trr(
                 self.handle.xdrfile,
@@ -322,49 +351,37 @@ impl Trajectory for TRRTrajectory {
             ) as u32;
             match code {
                 xdrfile::exdrOK => Ok(()),
-                _ => Err(err_msg(format!(
-                    "Failed to write trajectory. Error code: {}",
-                    code
-                ))),
+                _ => Err(Error::CouldNotWrite(code)),
             }
         }
     }
 
-    fn flush(&mut self) -> Result<(), Error> {
+    fn flush(&mut self) -> Result<()> {
         unsafe {
             let code = xdr_seek::xdr_flush(self.handle.xdrfile) as u32;
             match code {
                 xdrfile::exdrOK => Ok(()),
-                _ => Err(err_msg(format!(
-                    "Failed to flush trajectory. Error code: {}",
-                    code
-                ))),
+                _ => Err(Error::CouldNotFlush(code)),
             }
         }
     }
 
-    fn get_num_atoms(&mut self) -> Result<u32, Error> {
-        let result = self.num_atoms.get_or_create(|| {
-            let mut num_atoms: i32 = 0;
-            unsafe {
-                let path = CString::new(self.handle.path.as_str()).unwrap();
-                let path_p = path.into_raw();
-                let code =
-                    xdrfile_trr::read_trr_natoms(path_p, &mut num_atoms as *const i32) as u32;
-                match code {
-                    xdrfile::exdrOK => Ok(num_atoms as u32),
-                    _ => Err(err_msg(format!(
-                        "Failed to read atom number from trajectory. Error code: {}",
-                        code
-                    ))),
+    fn get_num_atoms(&mut self) -> Result<u32> {
+        self.num_atoms
+            .get_or_create(|| {
+                let mut num_atoms: i32 = 0;
+                unsafe {
+                    let path = CString::new(self.handle.path.as_str()).unwrap();
+                    let path_p = path.into_raw();
+                    let code =
+                        xdrfile_trr::read_trr_natoms(path_p, &mut num_atoms as *const i32) as u32;
+                    match code {
+                        xdrfile::exdrOK => Ok(num_atoms as u32),
+                        _ => Err(Error::CouldNotReadAtomNumber(code)),
+                    }
                 }
-            }
-        });
-        match result {
-            Ok(val) => Ok(*val),
-            // ugly hack because failure::Error is not "Clone"
-            Err(err) => Err(err_msg(format!("{}", err))),
-        }
+            })
+            .clone()
     }
 }
 

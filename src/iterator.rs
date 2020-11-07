@@ -1,10 +1,9 @@
 use crate::c_abi::xdrfile::exdrENDOFFILE;
 use crate::*;
-use failure::Error;
 use std::rc::Rc;
 
 impl IntoIterator for XTCTrajectory {
-    type Item = Result<Rc<Frame>, Error>;
+    type Item = Result<Rc<Frame>>;
     type IntoIter = XTCTrajectoryIterator;
 
     fn into_iter(mut self) -> Self::IntoIter {
@@ -30,7 +29,7 @@ pub struct XTCTrajectoryIterator {
 }
 
 impl Iterator for XTCTrajectoryIterator {
-    type Item = Result<Rc<Frame>, Error>;
+    type Item = Result<Rc<Frame>>;
 
     fn next(&mut self) -> Option<Self::Item> {
         // Reuse old frame
@@ -61,7 +60,7 @@ impl Iterator for XTCTrajectoryIterator {
 }
 
 impl IntoIterator for TRRTrajectory {
-    type Item = Result<Rc<Frame>, Error>;
+    type Item = Result<Rc<Frame>>;
     type IntoIter = TRRTrajectoryIterator;
 
     fn into_iter(mut self) -> Self::IntoIter {
@@ -87,7 +86,7 @@ pub struct TRRTrajectoryIterator {
 }
 
 impl Iterator for TRRTrajectoryIterator {
-    type Item = Result<Rc<Frame>, Error>;
+    type Item = Result<Rc<Frame>>;
 
     fn next(&mut self) -> Option<Self::Item> {
         // Reuse old frame

@@ -8,7 +8,6 @@ description = "Wrapper around the gromacs libxdrfile library. Can be used to rea
 build = "build.rs"
 
 [dependencies]
-failure = "0.1"
 lazy-init = "0.3"
 
 [dev-dependencies]
