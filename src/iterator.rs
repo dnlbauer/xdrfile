@@ -1,5 +1,5 @@
-use crate::*;
 use crate::c_abi::xdrfile::exdrENDOFFILE;
+use crate::*;
 use failure::Error;
 use std::rc::Rc;
 
@@ -13,14 +13,14 @@ impl IntoIterator for XTCTrajectory {
         XTCTrajectoryIterator {
             trajectory: self,
             item: Rc::new(Frame::with_capacity(num_atoms)),
-            has_error: false
+            has_error: false,
         }
     }
 }
 
-/* 
+/*
 Iterator for trajectories. This iterator yields a Result<Frame, Error>
-for each frame in the trajectory file and stops with yielding None once the 
+for each frame in the trajectory file and stops with yielding None once the
 trajectory is finished. Also yields None after the first occurence of an error
 */
 pub struct XTCTrajectoryIterator {
@@ -32,18 +32,19 @@ pub struct XTCTrajectoryIterator {
 impl Iterator for XTCTrajectoryIterator {
     type Item = Result<Rc<Frame>, Error>;
 
-    fn next(&mut self) -> Option<Self::Item> { // Reuse old frame
+    fn next(&mut self) -> Option<Self::Item> {
+        // Reuse old frame
         if self.has_error {
             return None;
         }
 
         let item: &mut Frame = match Rc::get_mut(&mut self.item) {
             Some(item) => item,
-            None => {  // caller kept frame. Create new one
+            None => {
+                // caller kept frame. Create new one
                 self.item = Rc::new(Frame::with_capacity(self.item.num_atoms));
                 Rc::get_mut(&mut self.item).unwrap()
             }
-
         };
         match self.trajectory.read(item) {
             Ok(()) => Some(Ok(Rc::clone(&self.item))),
@@ -55,7 +56,7 @@ impl Iterator for XTCTrajectoryIterator {
                     Some(Err(msg))
                 }
             }
-        } 
+        }
     }
 }
 
@@ -69,14 +70,14 @@ impl IntoIterator for TRRTrajectory {
         TRRTrajectoryIterator {
             trajectory: self,
             item: Rc::new(Frame::with_capacity(num_atoms)),
-            has_error: false
+            has_error: false,
         }
     }
 }
 
-/* 
+/*
 Iterator for trajectories. This iterator yields a Result<Frame, Error>
-for each frame in the trajectory file and stops with yielding None once the 
+for each frame in the trajectory file and stops with yielding None once the
 trajectory is finished. Also yields None after the first occurence of an error
 */
 pub struct TRRTrajectoryIterator {
@@ -88,18 +89,19 @@ pub struct TRRTrajectoryIterator {
 impl Iterator for TRRTrajectoryIterator {
     type Item = Result<Rc<Frame>, Error>;
 
-    fn next(&mut self) -> Option<Self::Item> { // Reuse old frame
+    fn next(&mut self) -> Option<Self::Item> {
+        // Reuse old frame
         if self.has_error {
             return None;
         }
 
         let item: &mut Frame = match Rc::get_mut(&mut self.item) {
             Some(item) => item,
-            None => {  // caller kept frame. Create new one
+            None => {
+                // caller kept frame. Create new one
                 self.item = Rc::new(Frame::with_capacity(self.item.num_atoms));
                 Rc::get_mut(&mut self.item).unwrap()
             }
-
         };
         match self.trajectory.read(item) {
             Ok(()) => Some(Ok(Rc::clone(&self.item))),
@@ -111,7 +113,7 @@ impl Iterator for TRRTrajectoryIterator {
                     Some(Err(msg))
                 }
             }
-        } 
+        }
     }
 }
 

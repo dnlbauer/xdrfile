@@ -1,4 +1,3 @@
-
 pub const DIM: u32 = 3;
 
 #[repr(C)]
@@ -6,7 +5,6 @@ pub const DIM: u32 = 3;
 pub struct XDRFILE {
     _unused: [u8; 0],
 }
-
 
 pub type BindgenTy1 = u32;
 pub const exdrOK: BindgenTy1 = 0;
