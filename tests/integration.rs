@@ -7,9 +7,7 @@ mod integration {
 
     #[test]
     fn test_use_library() {
-        let path = Path::new("tests/1l2y.xtc");
-
-        let mut trj = XTCTrajectory::open(path, FileMode::Read).unwrap();
+        let mut trj = XTCTrajectory::open("tests/1l2y.xtc", FileMode::Read).unwrap();
         let num_atoms = trj.get_num_atoms().unwrap();
         let mut frame = Frame::with_capacity(num_atoms);
 
