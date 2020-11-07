@@ -10,9 +10,8 @@
 //! use xdrfile::*;
 //! use std::path::Path;
 //!
-//! let mut path = Path::new("tests/1l2y.xtc");
 //! // get a handle to the file
-//! let mut trj = XTCTrajectory::open(path, FileMode::Read).unwrap();
+//! let mut trj = XTCTrajectory::open_read("tests/1l2y.xtc").unwrap();
 //!
 //! // find number of atoms in the file
 //! let num_atoms = trj.get_num_atoms().unwrap();
@@ -220,6 +219,21 @@ impl XTCTrajectory {
             num_atoms: Lazy::new(),
         })
     }
+
+    /// Open a file in read mode
+    pub fn open_read(path: impl AsRef<Path>) -> Result<Self> {
+        Self::open(path, FileMode::Read)
+    }
+
+    /// Open a file in append mode
+    pub fn open_append(path: impl AsRef<Path>) -> Result<Self> {
+        Self::open(path, FileMode::Append)
+    }
+
+    /// Open a file in write mode
+    pub fn open_write(path: impl AsRef<Path>) -> Result<Self> {
+        Self::open(path, FileMode::Write)
+    }
 }
 
 impl Trajectory for XTCTrajectory {
@@ -306,6 +320,21 @@ impl TRRTrajectory {
             handle: xdr,
             num_atoms: Lazy::new(),
         })
+    }
+
+    /// Open a file in read mode
+    pub fn open_read(path: impl AsRef<Path>) -> Result<Self> {
+        Self::open(path, FileMode::Read)
+    }
+
+    /// Open a file in append mode
+    pub fn open_append(path: impl AsRef<Path>) -> Result<Self> {
+        Self::open(path, FileMode::Append)
+    }
+
+    /// Open a file in write mode
+    pub fn open_write(path: impl AsRef<Path>) -> Result<Self> {
+        Self::open(path, FileMode::Write)
     }
 }
 
