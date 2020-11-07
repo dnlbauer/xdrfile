@@ -200,11 +200,11 @@ impl XTCTrajectory {
 
 impl Trajectory for XTCTrajectory {
     fn read(&mut self, frame: &mut Frame) -> Result<()> {
+        let mut step: i32 = 0;
         unsafe {
             // C lib requires an i32 to be passed, but step is exposed it as u32
             // (A step cannot be negative, can it?). So we need to create a step
             // variable to pass to read_xtc and cast it afterwards to u32
-            let mut step: i32 = 0;
             let code = xdrfile_xtc::read_xtc(
                 self.handle.xdrfile,
                 frame.num_atoms as i32,
@@ -215,10 +215,7 @@ impl Trajectory for XTCTrajectory {
                 &mut self.precision.get(),
             ) as u32;
             frame.step = step as u32;
-            match code.into() {
-                ErrorCode::ExdrOk => Ok(()),
-                _ => Err(Error::from_read(code)),
-            }
+            ErrorCode::check(code, ()).map_err(Error::from_read)
         }
     }
 
@@ -233,20 +230,14 @@ impl Trajectory for XTCTrajectory {
                 frame.coords[..].as_ptr() as *mut [f32; 3],
                 1000.0,
             ) as u32;
-            match code.into() {
-                ErrorCode::ExdrOk => Ok(()),
-                _ => Err(Error::from_write(code)),
-            }
+            ErrorCode::check(code, ()).map_err(Error::from_write)
         }
     }
 
     fn flush(&mut self) -> Result<()> {
         unsafe {
             let code = xdr_seek::xdr_flush(self.handle.xdrfile) as u32;
-            match code.into() {
-                ErrorCode::ExdrOk => Ok(()),
-                _ => Err(Error::from_flush(code)),
-            }
+            ErrorCode::check(code, ()).map_err(Error::from_flush)
         }
     }
 
@@ -254,6 +245,7 @@ impl Trajectory for XTCTrajectory {
         self.num_atoms
             .get_or_create(|| {
                 let mut num_atoms: i32 = 0;
+
                 unsafe {
                     let path = path_to_cstring(&self.handle.path)?;
                     let path_p = path.into_raw();
@@ -262,10 +254,7 @@ impl Trajectory for XTCTrajectory {
                     // Reconstitute the CString so it is deallocated correctly
                     let _ = CString::from_raw(path_p);
 
-                    match code.into() {
-                        ErrorCode::ExdrOk => Ok(num_atoms as u32),
-                        _ => Err(Error::from_read_num_atoms(code)),
-                    }
+                    ErrorCode::check(code, num_atoms as u32).map_err(Error::from_read_num_atoms)
                 }
             })
             .clone()
@@ -305,13 +294,13 @@ impl TRRTrajectory {
 
 impl Trajectory for TRRTrajectory {
     fn read(&mut self, frame: &mut Frame) -> Result<()> {
+        let mut step: i32 = 0;
+        let mut lambda: f32 = 0.0;
         unsafe {
             // C lib requires an i32 to be passed, but step is exposed it as u32
             // (A step cannot be negative, can it?). So we need to create a step
             // variable to pass to read_trr and cast it afterwards to u32.
             // Similar for lambda.
-            let mut step: i32 = 0;
-            let mut lambda: f32 = 0.0;
             let code = xdrfile_trr::read_trr(
                 self.handle.xdrfile,
                 frame.num_atoms as i32,
@@ -324,10 +313,7 @@ impl Trajectory for TRRTrajectory {
                 std::ptr::null_mut(),
             ) as u32;
             frame.step = step as u32;
-            match code.into() {
-                ErrorCode::ExdrOk => Ok(()),
-                _ => Err(Error::from_read(code)),
-            }
+            ErrorCode::check(code, ()).map_err(Error::from_read)
         }
     }
 
@@ -344,20 +330,14 @@ impl Trajectory for TRRTrajectory {
                 std::ptr::null_mut(),
                 std::ptr::null_mut(),
             ) as u32;
-            match code.into() {
-                ErrorCode::ExdrOk => Ok(()),
-                _ => Err(Error::from_write(code)),
-            }
+            ErrorCode::check(code, ()).map_err(Error::from_write)
         }
     }
 
     fn flush(&mut self) -> Result<()> {
         unsafe {
             let code = xdr_seek::xdr_flush(self.handle.xdrfile) as u32;
-            match code.into() {
-                ErrorCode::ExdrOk => Ok(()),
-                _ => Err(Error::from_flush(code)),
-            }
+            ErrorCode::check(code, ()).map_err(Error::from_flush)
         }
     }
 
@@ -373,10 +353,7 @@ impl Trajectory for TRRTrajectory {
                     // Reconstitute the CString so it is deallocated correctly
                     let _ = CString::from_raw(path_p);
 
-                    match code.into() {
-                        ErrorCode::ExdrOk => Ok(num_atoms as u32),
-                        _ => Err(Error::from_read_num_atoms(code)),
-                    }
+                    ErrorCode::check(code, num_atoms as u32).map_err(Error::from_read_num_atoms)
                 }
             })
             .clone()

@@ -115,7 +115,7 @@ impl std::error::Error for Error {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Copy)]
 pub enum ErrorCode {
     ExdrOk,
     ExdrHeader,
@@ -139,6 +139,15 @@ impl ErrorCode {
         match self {
             Self::ExdrEndOfFile => true,
             _ => false,
+        }
+    }
+
+    pub fn check<T>(code: impl Into<Self>, value: T) -> std::result::Result<T, Self> {
+        let code = code.into();
+        if let Self::ExdrOk = code {
+            Ok(value)
+        } else {
+            Err(code)
         }
     }
 }
