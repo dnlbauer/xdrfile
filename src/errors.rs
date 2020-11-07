@@ -31,42 +31,42 @@ impl Error {
         self.code.as_ref().map_or(false, ErrorCode::is_eof)
     }
 
-    pub fn from_convert() -> Self {
+    pub(crate) fn from_convert() -> Self {
         Self {
             code: None,
             task: ErrorTask::ToCString(None),
         }
     }
 
-    pub fn from_open(path: impl AsRef<Path>, mode: FileMode) -> Self {
+    pub(crate) fn from_open(path: impl AsRef<Path>, mode: FileMode) -> Self {
         Self {
             code: None,
             task: ErrorTask::OpenFile(path.as_ref().into(), mode),
         }
     }
 
-    pub fn from_read_num_atoms(code: impl Into<ErrorCode>) -> Self {
+    pub(crate) fn from_read_num_atoms(code: impl Into<ErrorCode>) -> Self {
         Self {
             code: Some(code.into()),
             task: ErrorTask::ReadNumAtoms,
         }
     }
 
-    pub fn from_read(code: impl Into<ErrorCode>) -> Self {
+    pub(crate) fn from_read(code: impl Into<ErrorCode>) -> Self {
         Self {
             code: Some(code.into()),
             task: ErrorTask::Read,
         }
     }
 
-    pub fn from_write(code: impl Into<ErrorCode>) -> Self {
+    pub(crate) fn from_write(code: impl Into<ErrorCode>) -> Self {
         Self {
             code: Some(code.into()),
             task: ErrorTask::Write,
         }
     }
 
-    pub fn from_flush(code: impl Into<ErrorCode>) -> Self {
+    pub(crate) fn from_flush(code: impl Into<ErrorCode>) -> Self {
         Self {
             code: Some(code.into()),
             task: ErrorTask::Flush,
