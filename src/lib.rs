@@ -127,7 +127,7 @@ impl std::error::Error for Error {}
 
 type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum FileMode {
     Write,
     Append,
@@ -467,5 +467,51 @@ mod tests {
         assert_eq!(new_frame.time, frame.time);
         assert_eq!(new_frame.box_vector, frame.box_vector);
         assert_eq!(new_frame.coords, frame.coords);
+    }
+
+    #[test]
+    fn test_err_could_not_open() {
+        let file_name = "non-existent.xtc";
+        let path = Path::new(&file_name);
+        if let Err(e) = XDRFile::open(path, FileMode::Read) {
+            match e {
+                Error::CouldNotOpenFile(err_path, err_mode) => {
+                    assert_eq!(path, err_path);
+                    assert!(FileMode::Read == err_mode)
+                }
+                _ => panic!("Wrong Error type"),
+            }
+        }
+    }
+
+    #[test]
+    fn test_err_could_not_read_atom_nr() {
+        let file_name = "README.md"; // not a trajectory
+        let path = Path::new(&file_name);
+        let mut trr = TRRTrajectory::open(path, FileMode::Read).unwrap();
+        if let Err(e) = trr.get_num_atoms() {
+            match e {
+                Error::CouldNotReadAtomNumber(code) => {
+                    assert_eq!(xdrfile::exdrMAGIC, code);
+                }
+                _ => panic!("Wrong Error type"),
+            }
+        }
+    }
+
+    #[test]
+    fn test_err_could_not_read() {
+        let file_name = "README.md"; // not a trajectory
+        let path = Path::new(&file_name);
+        let mut frame = Frame::with_capacity(1);
+        let mut trr = TRRTrajectory::open(path, FileMode::Read).unwrap();
+        if let Err(e) = trr.read(&mut frame) {
+            match e {
+                Error::CouldNotRead(code) => {
+                    assert_eq!(xdrfile::exdrMAGIC, code);
+                }
+                _ => panic!("Wrong Error type"),
+            }
+        }
     }
 }
