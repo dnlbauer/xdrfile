@@ -32,7 +32,7 @@
 //!        assert_eq!(first_atom_coords, [-0.8901, 0.4127, -0.055499997]);
 //!    }
 //!    Err(msg) => {
-//!        panic!("Something went wrong: {}", msg);    
+//!        panic!("Something went wrong: {}", msg);
 //!    }
 //! }
 //! ```
@@ -104,6 +104,7 @@ fn path_to_cstring(path: &Path) -> CString {
 /// A safe wrapper around the c implementation of an XDRFile
 struct XDRFile {
     xdrfile: *mut XDRFILE,
+    #[allow(dead_code)]
     filemode: FileMode,
     path: String,
 }

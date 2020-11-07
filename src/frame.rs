@@ -53,7 +53,7 @@ impl Frame {
     /// Creates a frame with the given capacity
     pub fn with_capacity(num_atoms: u32) -> Frame {
         Frame {
-            num_atoms: num_atoms,
+            num_atoms,
             coords: vec![[0.0, 0.0, 0.0]; num_atoms as usize],
             ..Default::default()
         }
