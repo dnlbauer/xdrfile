@@ -111,8 +111,8 @@ mod tests {
     use std::ffi::CString;
 
     #[test]
-    fn test_xdr_tell() {
-        let path = CString::new("tests/1l2y.xtc").unwrap();
+    fn test_xdr_tell() -> Result<(), Box<dyn std::error::Error>> {
+        let path = CString::new("tests/1l2y.xtc")?;
         let num_atoms = 304;
         let mut time: f32 = 2.0;
         let mut step: i32 = 5;
@@ -121,7 +121,7 @@ mod tests {
         let mut prec: f32 = 0.0;
 
         unsafe {
-            let mode = CString::new("r").unwrap();
+            let mode = CString::new("r")?;
             let xdr = xdrfile_open(path.as_ptr(), mode.as_ptr());
             assert!(!xdr.is_null());
 
@@ -140,15 +140,16 @@ mod tests {
 
             let tell = xdr_tell(xdr);
             assert!(tell > 0, "{}", tell);
-        }
+        };
+        Ok(())
     }
 
     #[test]
-    fn test_xdr_seek() {
-        let path = CString::new("tests/1l2y.xtc").unwrap();
+    fn test_xdr_seek() -> Result<(), Box<dyn std::error::Error>> {
+        let path = CString::new("tests/1l2y.xtc")?;
 
         unsafe {
-            let mode = CString::new("r").unwrap();
+            let mode = CString::new("r")?;
             let xdr = xdrfile_open(path.as_ptr(), mode.as_ptr());
             assert!(!xdr.is_null());
 
@@ -160,5 +161,6 @@ mod tests {
             let tell = xdr_tell(xdr);
             assert!(tell == 500, "{}", tell);
         }
+        Ok(())
     }
 }

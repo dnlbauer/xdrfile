@@ -1,74 +1,35 @@
-use crate::c_abi::xdrfile::exdrENDOFFILE;
 use crate::*;
 use std::rc::Rc;
 
 impl IntoIterator for XTCTrajectory {
     type Item = Result<Rc<Frame>>;
-    type IntoIter = XTCTrajectoryIterator;
+    type IntoIter = TrajectoryIterator<XTCTrajectory>;
 
     fn into_iter(mut self) -> Self::IntoIter {
-        // TODO this should be handled without the requirement of unwrap
-        let num_atoms = self.get_num_atoms().unwrap();
-        XTCTrajectoryIterator {
-            trajectory: self,
-            item: Rc::new(Frame::with_capacity(num_atoms)),
-            has_error: false,
-        }
-    }
-}
-
-/*
-Iterator for trajectories. This iterator yields a Result<Frame, Error>
-for each frame in the trajectory file and stops with yielding None once the
-trajectory is finished. Also yields None after the first occurence of an error
-*/
-pub struct XTCTrajectoryIterator {
-    trajectory: XTCTrajectory,
-    item: Rc<Frame>,
-    has_error: bool,
-}
-
-impl Iterator for XTCTrajectoryIterator {
-    type Item = Result<Rc<Frame>>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        // Reuse old frame
-        if self.has_error {
-            return None;
-        }
-
-        let item: &mut Frame = match Rc::get_mut(&mut self.item) {
-            Some(item) => item,
-            None => {
-                // caller kept frame. Create new one
-                self.item = Rc::new(Frame::with_capacity(self.item.num_atoms));
-                Rc::get_mut(&mut self.item).unwrap()
-            }
+        let frame = match self.get_num_atoms() {
+            Ok(num_atoms) => Frame::with_capacity(num_atoms),
+            Err(_) => Frame::new(),
         };
-        match self.trajectory.read(item) {
-            Ok(()) => Some(Ok(Rc::clone(&self.item))),
-            Err(msg) => {
-                if msg.to_string().contains(&exdrENDOFFILE.to_string()) {
-                    None
-                } else {
-                    self.has_error = true;
-                    Some(Err(msg))
-                }
-            }
+        TrajectoryIterator {
+            trajectory: self,
+            item: Rc::new(frame),
+            has_error: false,
         }
     }
 }
 
 impl IntoIterator for TRRTrajectory {
     type Item = Result<Rc<Frame>>;
-    type IntoIter = TRRTrajectoryIterator;
+    type IntoIter = TrajectoryIterator<TRRTrajectory>;
 
     fn into_iter(mut self) -> Self::IntoIter {
-        // TODO this should be handled without the requirement of unwrap
-        let num_atoms = self.get_num_atoms().unwrap();
-        TRRTrajectoryIterator {
+        let frame = match self.get_num_atoms() {
+            Ok(num_atoms) => Frame::with_capacity(num_atoms),
+            Err(_) => Frame::new(),
+        };
+        TrajectoryIterator {
             trajectory: self,
-            item: Rc::new(Frame::with_capacity(num_atoms)),
+            item: Rc::new(frame),
             has_error: false,
         }
     }
@@ -79,13 +40,16 @@ Iterator for trajectories. This iterator yields a Result<Frame, Error>
 for each frame in the trajectory file and stops with yielding None once the
 trajectory is finished. Also yields None after the first occurence of an error
 */
-pub struct TRRTrajectoryIterator {
-    trajectory: TRRTrajectory,
+pub struct TrajectoryIterator<T> {
+    trajectory: T,
     item: Rc<Frame>,
     has_error: bool,
 }
 
-impl Iterator for TRRTrajectoryIterator {
+impl<T> Iterator for TrajectoryIterator<T>
+where
+    T: Trajectory,
+{
     type Item = Result<Rc<Frame>>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -99,18 +63,15 @@ impl Iterator for TRRTrajectoryIterator {
             None => {
                 // caller kept frame. Create new one
                 self.item = Rc::new(Frame::with_capacity(self.item.num_atoms));
-                Rc::get_mut(&mut self.item).unwrap()
+                Rc::get_mut(&mut self.item).expect("Could not get mutable access to new Rc")
             }
         };
         match self.trajectory.read(item) {
             Ok(()) => Some(Ok(Rc::clone(&self.item))),
-            Err(msg) => {
-                if msg.to_string().contains(&exdrENDOFFILE.to_string()) {
-                    None
-                } else {
-                    self.has_error = true;
-                    Some(Err(msg))
-                }
+            Err(e) if e.is_eof() => None,
+            Err(e) => {
+                self.has_error = true;
+                Some(Err(e))
             }
         }
     }
@@ -121,20 +82,24 @@ mod tests {
     use super::*;
 
     #[test]
-    pub fn test_xtc_trajectory_iterator() {
-        let traj = XTCTrajectory::open_read("tests/1l2y.xtc").unwrap();
-        let frames: Vec<Rc<Frame>> = traj.into_iter().filter_map(Result::ok).collect();
+    pub fn test_xtc_trajectory_iterator() -> Result<()> {
+        let traj = XTCTrajectory::open_read("tests/1l2y.xtc")?;
+        let frames: Result<Vec<Rc<Frame>>> = traj.into_iter().collect();
+        let frames = frames?;
         assert!(frames.len() == 38);
         assert!(frames[0].step == 1, frames[0].step);
         assert!(frames[37].step == 38);
+        Ok(())
     }
 
     #[test]
-    pub fn test_trr_trajectory_iterator() {
-        let traj = TRRTrajectory::open_read("tests/1l2y.trr").unwrap();
-        let frames: Vec<Rc<Frame>> = traj.into_iter().filter_map(Result::ok).collect();
+    pub fn test_trr_trajectory_iterator() -> Result<()> {
+        let traj = TRRTrajectory::open_read("tests/1l2y.trr")?;
+        let frames: Result<Vec<Rc<Frame>>> = traj.into_iter().collect();
+        let frames = frames?;
         assert!(frames.len() == 38);
         assert!(frames[0].step == 1, frames[0].step);
         assert!(frames[37].step == 38);
+        Ok(())
     }
 }
