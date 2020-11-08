@@ -11,11 +11,9 @@ files with a safe api.
 ### Basic usage
 ```rust
 use xdrfile::*;
-use std::path::Path; 
 
-let mut path = Path::new("tests/1l2y.xtc");
 // get a handle to the file
-let mut trj = XTCTrajectory::open(path, FileMode::Read).unwrap();
+let mut trj = XTCTrajectory::open_read("tests/1l2y.xtc").unwrap();
 
 // find number of atoms in the file
 let num_atoms = trj.get_num_atoms().unwrap();
@@ -48,11 +46,9 @@ Rc is required)
 
 ```rust
 use xdrfile::*;
-use std::path::Path; 
 
-let mut path = Path::new("tests/1l2y.xtc");
 // get a handle to the file
-let trj = XTCTrajectory::open(path, FileMode::Read).unwrap();
+let trj = XTCTrajectory::open_read("tests/1l2y.xtc").unwrap();
 
 // iterate over all frames
 for (idx, frame) in trj.into_iter().filter_map(Result::ok).enumerate() {

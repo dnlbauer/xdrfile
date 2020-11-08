@@ -122,7 +122,7 @@ mod tests {
 
     #[test]
     pub fn test_xtc_trajectory_iterator() {
-        let traj = XTCTrajectory::open(Path::new("tests/1l2y.xtc"), FileMode::Read).unwrap();
+        let traj = XTCTrajectory::open_read("tests/1l2y.xtc").unwrap();
         let frames: Vec<Rc<Frame>> = traj.into_iter().filter_map(Result::ok).collect();
         assert!(frames.len() == 38);
         assert!(frames[0].step == 1, frames[0].step);
@@ -131,7 +131,7 @@ mod tests {
 
     #[test]
     pub fn test_trr_trajectory_iterator() {
-        let traj = TRRTrajectory::open(Path::new("tests/1l2y.trr"), FileMode::Read).unwrap();
+        let traj = TRRTrajectory::open_read("tests/1l2y.trr").unwrap();
         let frames: Vec<Rc<Frame>> = traj.into_iter().filter_map(Result::ok).collect();
         assert!(frames.len() == 38);
         assert!(frames[0].step == 1, frames[0].step);
