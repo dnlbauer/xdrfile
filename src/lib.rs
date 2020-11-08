@@ -8,7 +8,6 @@
 //! # Basic usage example
 //! ```rust
 //! use xdrfile::*;
-//! use std::path::Path;
 //!
 //! // get a handle to the file
 //! let mut trj = XTCTrajectory::open_read("tests/1l2y.xtc").unwrap();
@@ -44,11 +43,9 @@
 //!
 //! ```rust
 //! use xdrfile::*;
-//! use std::path::Path;
 //!
-//! let mut path = Path::new("tests/1l2y.xtc");
 //! // get a handle to the file
-//! let trj = XTCTrajectory::open(path, FileMode::Read).unwrap();
+//! let trj = XTCTrajectory::open_read("tests/1l2y.xtc").unwrap();
 //!
 //! // iterate over all frames
 //! for (idx, frame) in trj.into_iter().filter_map(Result::ok).enumerate() {
@@ -434,7 +431,7 @@ mod tests {
             box_vector: [[1.0, 2.0, 3.0], [2.0, 1.0, 3.0], [3.0, 2.0, 1.0]],
             coords: vec![[1.0, 1.0, 1.0], [1.0, 1.0, 1.0]],
         };
-        let mut f = XTCTrajectory::open(tmp_path, FileMode::Write).unwrap();
+        let mut f = XTCTrajectory::open_write(&tmp_path).unwrap();
         let write_status = f.write(&frame);
         match write_status {
             Err(_) => panic!("Failed"),
@@ -443,7 +440,7 @@ mod tests {
         f.flush().unwrap();
 
         let mut new_frame = Frame::with_capacity(natoms);
-        let mut f = XTCTrajectory::open(tmp_path, FileMode::Read).unwrap();
+        let mut f = XTCTrajectory::open_read(tmp_path).unwrap();
         let num_atoms = f.get_num_atoms().unwrap();
         assert_eq!(num_atoms, natoms);
 
@@ -473,7 +470,7 @@ mod tests {
             box_vector: [[1.0, 2.0, 3.0], [2.0, 1.0, 3.0], [3.0, 2.0, 1.0]],
             coords: vec![[1.0, 1.0, 1.0], [1.0, 1.0, 1.0]],
         };
-        let mut f = TRRTrajectory::open(tmp_path, FileMode::Write).unwrap();
+        let mut f = TRRTrajectory::open_write(tmp_path).unwrap();
         let write_status = f.write(&frame);
         match write_status {
             Err(_) => panic!("Failed"),
@@ -482,7 +479,7 @@ mod tests {
         f.flush().unwrap();
 
         let mut new_frame = Frame::with_capacity(natoms);
-        let mut f = TRRTrajectory::open(tmp_path, FileMode::Read).unwrap();
+        let mut f = TRRTrajectory::open_read(tmp_path).unwrap();
         // let num_atoms = f.get_num_atoms().unwrap();
         // assert_eq!(num_atoms, natoms);
 
@@ -502,11 +499,11 @@ mod tests {
     #[test]
     fn test_err_could_not_open() {
         let file_name = "non-existent.xtc";
-        let path = Path::new(&file_name);
-        if let Err(e) = XDRFile::open(path, FileMode::Read) {
+        let expexted_path = Path::new(&file_name);
+        if let Err(e) = XDRFile::open(file_name, FileMode::Read) {
             match e {
                 Error::CouldNotOpenFile(err_path, err_mode) => {
-                    assert_eq!(path, err_path);
+                    assert_eq!(expexted_path, err_path);
                     assert!(FileMode::Read == err_mode)
                 }
                 _ => panic!("Wrong Error type"),
@@ -517,8 +514,7 @@ mod tests {
     #[test]
     fn test_err_could_not_read_atom_nr() {
         let file_name = "README.md"; // not a trajectory
-        let path = Path::new(&file_name);
-        let mut trr = TRRTrajectory::open(path, FileMode::Read).unwrap();
+        let mut trr = TRRTrajectory::open_read(file_name).unwrap();
         if let Err(e) = trr.get_num_atoms() {
             match e {
                 Error::CouldNotReadAtomNumber(code) => {
@@ -532,9 +528,8 @@ mod tests {
     #[test]
     fn test_err_could_not_read() {
         let file_name = "README.md"; // not a trajectory
-        let path = Path::new(&file_name);
         let mut frame = Frame::with_capacity(1);
-        let mut trr = TRRTrajectory::open(path, FileMode::Read).unwrap();
+        let mut trr = TRRTrajectory::open_read(file_name).unwrap();
         if let Err(e) = trr.read(&mut frame) {
             match e {
                 Error::CouldNotRead(code) => {
