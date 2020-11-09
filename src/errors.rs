@@ -114,7 +114,11 @@ impl std::fmt::Display for Error {
             Read => write!(f, "Failed to read trajectory"),
             Write => write!(f, "Failed to write trajectory"),
             Flush => write!(f, "Failed to flush trajectory"),
-            ToCString(_) => write!(
+            ToCString(None) => write!(
+                f,
+                "Path cannot be converted to a C string because it was invalid Unicode"
+            ),
+            ToCString(Some(_)) => write!(
                 f,
                 "Path cannot be converted to a C string because it has a null byte"
             ),
