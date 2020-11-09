@@ -201,6 +201,10 @@ impl XTCTrajectory {
 impl Trajectory for XTCTrajectory {
     fn read(&mut self, frame: &mut Frame) -> Result<()> {
         let mut step: i32 = 0;
+        frame.resize(
+            self.get_num_atoms()
+                .map_err(|e| e.with_task(ErrorTask::Read))?,
+        );
         unsafe {
             // C lib requires an i32 to be passed, but step is exposed it as u32
             // (A step cannot be negative, can it?). So we need to create a step
@@ -296,6 +300,10 @@ impl Trajectory for TRRTrajectory {
     fn read(&mut self, frame: &mut Frame) -> Result<()> {
         let mut step: i32 = 0;
         let mut lambda: f32 = 0.0;
+        frame.resize(
+            self.get_num_atoms()
+                .map_err(|e| e.with_task(ErrorTask::Read))?,
+        );
         unsafe {
             // C lib requires an i32 to be passed, but step is exposed it as u32
             // (A step cannot be negative, can it?). So we need to create a step
@@ -447,6 +455,38 @@ mod tests {
     }
 
     #[test]
+    pub fn test_manual_loop() -> Result<(), Box<dyn std::error::Error>> {
+        let mut frame = Frame::new();
+
+        let mut xtc_frames = Vec::new();
+        let mut xtc_traj = XTCTrajectory::open_read("tests/1l2y.xtc")?;
+
+        while let Ok(()) = xtc_traj.read(&mut frame) {
+            xtc_frames.push(frame.clone());
+        }
+
+        let mut trr_frames = Vec::new();
+        let mut trr_traj = TRRTrajectory::open_read("tests/1l2y.trr")?;
+
+        while let Ok(()) = trr_traj.read(&mut frame) {
+            trr_frames.push(frame.clone());
+        }
+
+        for (xtc, trr) in xtc_frames.into_iter().zip(trr_frames) {
+            assert_eq!(xtc.num_atoms, trr.num_atoms);
+            assert_eq!(xtc.step, trr.step);
+            assert_eq!(xtc.time, trr.time);
+            assert_eq!(xtc.box_vector, trr.box_vector);
+            for (xtc_xyz, trr_xyz) in xtc.coords.into_iter().zip(trr.coords) {
+                assert!(xtc_xyz[0] - trr_xyz[0] <= 1e-5);
+                assert!(xtc_xyz[1] - trr_xyz[1] <= 1e-5);
+                assert!(xtc_xyz[2] - trr_xyz[2] <= 1e-5);
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
     fn test_path_to_cstring() -> Result<(), Box<dyn std::error::Error>> {
         let result_invalid = path_to_cstring(PathBuf::from("invalid/\0path"));
 
@@ -493,7 +533,7 @@ mod tests {
         if let Err(e) = trr.get_num_atoms() {
             match e.task() {
                 ErrorTask::ReadNumAtoms => {
-                    assert_eq!(Some(ErrorCode::ExdrMagic), *e.code());
+                    assert_eq!(ErrorCode::ExdrMagic, *e.code());
                 }
                 _ => panic!("Wrong Error type"),
             }
@@ -509,7 +549,7 @@ mod tests {
         if let Err(e) = trr.read(&mut frame) {
             match e.task() {
                 ErrorTask::Read => {
-                    assert_eq!(Some(ErrorCode::ExdrMagic), *e.code());
+                    assert_eq!(ErrorCode::ExdrMagic, *e.code());
                 }
                 _ => panic!("Wrong Error type"),
             }

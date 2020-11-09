@@ -22,8 +22,9 @@ pub enum ErrorTask {
 #[derive(Debug, Clone, PartialEq)]
 /// Error type for the xdrfile library
 pub struct Error {
-    code: Option<ErrorCode>,
+    code: ErrorCode,
     task: ErrorTask,
+    source: Option<Box<Error>>,
 }
 
 impl Error {
@@ -33,60 +34,75 @@ impl Error {
     }
 
     /// Get the error code returned by the C API, if any
-    pub fn code(&self) -> &Option<ErrorCode> {
+    pub fn code(&self) -> &ErrorCode {
         &self.code
     }
 
     /// True if the error is an end of file error, false otherwise
     pub fn is_eof(&self) -> bool {
-        self.code.as_ref().map_or(false, ErrorCode::is_eof)
+        self.code.is_eof()
     }
 
     /// Construct a new error during the ToCString task
     pub(crate) fn from_convert() -> Self {
         Self {
-            code: None,
+            code: ErrorCode::NoCode,
             task: ErrorTask::ToCString(None),
+            source: None,
         }
     }
 
     /// Construct a new error during the OpenFile task
     pub(crate) fn from_open(path: impl AsRef<Path>, mode: FileMode) -> Self {
         Self {
-            code: None,
+            code: ErrorCode::NoCode,
             task: ErrorTask::OpenFile(path.as_ref().into(), mode),
+            source: None,
         }
     }
 
     /// Construct a new error during the ReadNumAtoms task from a C error code
     pub(crate) fn from_read_num_atoms(code: impl Into<ErrorCode>) -> Self {
         Self {
-            code: Some(code.into()),
+            code: code.into(),
             task: ErrorTask::ReadNumAtoms,
+            source: None,
         }
     }
 
     /// Construct a new error during the Read task from a C error code
     pub(crate) fn from_read(code: impl Into<ErrorCode>) -> Self {
         Self {
-            code: Some(code.into()),
+            code: code.into(),
             task: ErrorTask::Read,
+            source: None,
         }
     }
 
     /// Construct a new error during the Write task from a C error code
     pub(crate) fn from_write(code: impl Into<ErrorCode>) -> Self {
         Self {
-            code: Some(code.into()),
+            code: code.into(),
             task: ErrorTask::Write,
+            source: None,
         }
     }
 
     /// Construct a new error during the Flush task from a C error code
     pub(crate) fn from_flush(code: impl Into<ErrorCode>) -> Self {
         Self {
-            code: Some(code.into()),
+            code: code.into(),
             task: ErrorTask::Flush,
+            source: None,
+        }
+    }
+
+    /// Construct a new error during the ReadNumAtoms task from a C error code
+    pub(crate) fn with_task(self, task: ErrorTask) -> Self {
+        Self {
+            code: self.code,
+            task,
+            source: Some(Box::new(self)),
         }
     }
 }
@@ -94,8 +110,9 @@ impl Error {
 impl From<std::ffi::NulError> for Error {
     fn from(err: std::ffi::NulError) -> Self {
         Self {
-            code: None,
+            code: ErrorCode::NoCode,
             task: ErrorTask::ToCString(Some(err)),
+            source: None,
         }
     }
 }
@@ -128,8 +145,10 @@ impl std::fmt::Display for Error {
 
 impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        if let Some(e) = &self.code {
-            Some(e)
+        if let Some(source) = &self.source {
+            Some(source.as_ref())
+        } else if self.code != ErrorCode::NoCode {
+            Some(&self.code)
         } else if let ErrorTask::ToCString(Some(e)) = &self.task {
             Some(e)
         } else {
@@ -171,6 +190,8 @@ pub enum ErrorCode {
     ExdrNr,
     /// Something unexpected happened
     UnmatchedCode(c_abi::xdrfile::BindgenTy1),
+    /// C returned no code at all
+    NoCode,
 }
 
 impl ErrorCode {
@@ -242,38 +263,44 @@ mod tests {
     #[test]
     fn test_is_eof() {
         let error = Error {
-            code: Some(c_abi::xdrfile::exdrENDOFFILE.into()),
+            code: c_abi::xdrfile::exdrENDOFFILE.into(),
             task: ErrorTask::Read,
+            source: None,
         };
         assert!(error.is_eof());
 
         let error = Error {
-            code: Some(ErrorCode::ExdrEndOfFile),
+            code: ErrorCode::ExdrEndOfFile,
             task: ErrorTask::Read,
+            source: None,
         };
         assert!(error.is_eof());
 
         let error = Error {
-            code: Some((c_abi::xdrfile::exdrENDOFFILE + 1).into()),
+            code: (c_abi::xdrfile::exdrENDOFFILE + 1).into(),
             task: ErrorTask::Read,
+            source: None,
         };
         assert!(!error.is_eof());
 
         let error = Error {
-            code: Some(0.into()),
+            code: 0.into(),
             task: ErrorTask::Write,
+            source: None,
         };
         assert!(!error.is_eof());
 
         let error = Error {
-            code: Some(255.into()),
+            code: 255.into(),
             task: ErrorTask::Flush,
+            source: None,
         };
         assert!(!error.is_eof());
 
         let error = Error {
-            code: None,
+            code: ErrorCode::NoCode,
             task: ErrorTask::OpenFile(PathBuf::from("not/a/file"), FileMode::Read),
+            source: None,
         };
         assert!(!error.is_eof());
     }
