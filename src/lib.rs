@@ -78,7 +78,7 @@ use std::cell::Cell;
 use std::ffi::CString;
 use std::path::{Path, PathBuf};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Error {
     CouldNotOpenFile(std::path::PathBuf, FileMode),
     CouldNotReadAtomNumber(u32),
@@ -145,7 +145,7 @@ impl Error {
 
 impl std::error::Error for Error {}
 
-pub type Result<T> = std::result::Result<T, Error>;
+pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum FileMode {
@@ -577,6 +577,18 @@ mod tests {
                 _ => panic!("Wrong Error type"),
             }
         }
+        Ok(())
+    }
+
+    #[test]
+    fn test_path_to_cstring() -> Result<(), Box<dyn std::error::Error>> {
+        let result_invalid = path_to_cstring("invalid/\0path");
+
+        assert_eq!(result_invalid, Err(Error::PathInvalidCstring));
+
+        let result_valid = path_to_cstring("valid/path");
+
+        assert_eq!(result_valid, Ok(CString::new("valid/path")?));
         Ok(())
     }
 }
