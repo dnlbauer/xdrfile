@@ -338,6 +338,13 @@ impl Trajectory for XTCTrajectory {
     }
 }
 
+impl Drop for XTCTrajectory {
+    /// Try to flush the file on drop, ignoring errors
+    fn drop(&mut self) {
+        let _ = self.flush();
+    }
+}
+
 /// Read/Write TRR Trajectories
 pub struct TRRTrajectory {
     handle: XDRFile,
@@ -445,6 +452,13 @@ impl Trajectory for TRRTrajectory {
                 }
             })
             .clone()
+    }
+}
+
+impl Drop for TRRTrajectory {
+    /// Try to flush the file on drop, ignoring errors
+    fn drop(&mut self) {
+        let _ = self.flush();
     }
 }
 
