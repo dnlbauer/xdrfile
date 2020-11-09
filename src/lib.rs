@@ -78,6 +78,7 @@ use c_abi::xdrfile_xtc;
 use lazy_init::Lazy;
 use std::cell::Cell;
 use std::ffi::CString;
+use std::io;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -152,6 +153,35 @@ impl XDRFile {
                 Err((path, filemode))?
             }
         }
+    }
+
+    /// Get the current position in the file
+    pub fn tell(&self) -> u64 {
+        use std::convert::TryInto as _;
+        unsafe {
+            xdr_seek::xdr_tell(self.xdrfile)
+                .try_into()
+                .expect("i64 could not be converted to u64")
+        }
+    }
+}
+
+impl io::Seek for XDRFile {
+    fn seek(&mut self, pos: io::SeekFrom) -> io::Result<u64> {
+        use std::io::SeekFrom::*;
+        let (whence, pos) = match pos {
+            Start(u) => (0, u as i64),
+            Current(i) => (1, i),
+            End(i) => (2, i),
+        };
+        unsafe {
+            let code = xdr_seek::xdr_seek(self.xdrfile, pos, whence);
+            if code as u32 != xdrfile::exdrOK {
+                return Err(io::Error::new(io::ErrorKind::Other, "Seek failed"));
+            }
+        };
+
+        Ok(self.tell())
     }
 }
 
@@ -569,6 +599,75 @@ mod tests {
 
         let result_valid = path_to_cstring("valid/path");
         assert_eq!(result_valid, Ok(CString::new("valid/path")?));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_tell() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let tempfile = NamedTempFile::new()?;
+        let tmp_path = tempfile.path();
+
+        let natoms: u32 = 2;
+        let frame = Frame {
+            num_atoms: natoms,
+            step: 5,
+            time: 2.0,
+            box_vector: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+            coords: vec![[0.0, 0.0, 0.0], [0.5, 0.5, 0.5]],
+        };
+        let mut f = TRRTrajectory::open_write(tmp_path)?;
+        assert_eq!(f.handle.tell(), 0);
+        f.write(&frame)?;
+        assert_eq!(f.handle.tell(), 144);
+        f.flush()?;
+
+        let mut new_frame = Frame::with_capacity(natoms);
+        let mut f = TRRTrajectory::open_read(tmp_path)?;
+        assert_eq!(f.handle.tell(), 0);
+
+        f.read(&mut new_frame)?;
+        assert_eq!(f.handle.tell(), 144);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_seek() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let tempfile = NamedTempFile::new()?;
+        let tmp_path = tempfile.path();
+
+        let natoms: u32 = 2;
+        let mut frame = Frame {
+            num_atoms: natoms,
+            step: 0,
+            time: 0.0,
+            box_vector: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+            coords: vec![[0.0, 0.0, 0.0], [0.5, 0.5, 0.5]],
+        };
+        let mut f = TRRTrajectory::open_write(tmp_path)?;
+        f.write(&frame)?;
+        let after_first_frame = f.handle.tell();
+        frame.step += 1;
+        frame.time += 10.0;
+        f.write(&frame)?;
+        let after_second_frame = f.handle.tell();
+        f.flush()?;
+
+        let mut new_frame = Frame::with_capacity(natoms);
+        let mut f = TRRTrajectory::open_read(tmp_path)?;
+        use std::io::Seek as _;
+        let pos = f.handle.seek(std::io::SeekFrom::Current(144))?;
+        assert_eq!(pos, after_first_frame);
+
+        f.read(&mut new_frame)?;
+        assert_eq!(f.handle.tell(), after_second_frame);
+
+        assert_eq!(new_frame.num_atoms, frame.num_atoms);
+        assert_eq!(new_frame.step, frame.step);
+        assert_eq!(new_frame.time, frame.time);
+        assert_eq!(new_frame.box_vector, frame.box_vector);
+        assert_eq!(new_frame.coords, frame.coords);
 
         Ok(())
     }
