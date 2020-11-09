@@ -535,6 +535,18 @@ mod tests {
     }
 
     #[test]
+    fn test_path_to_cstring() -> Result<(), Box<dyn std::error::Error>> {
+        let result_invalid = path_to_cstring("invalid/\0path");
+
+        assert_eq!(result_invalid, Err(Error::PathInvalidCstring));
+
+        let result_valid = path_to_cstring("valid/path");
+
+        assert_eq!(result_valid, Ok(CString::new("valid/path")?));
+        Ok(())
+    }
+
+    #[test]
     fn test_err_could_not_open() {
         let file_name = "non-existent.xtc";
         let expexted_path = Path::new(&file_name);
@@ -581,14 +593,65 @@ mod tests {
     }
 
     #[test]
-    fn test_path_to_cstring() -> Result<(), Box<dyn std::error::Error>> {
-        let result_invalid = path_to_cstring("invalid/\0path");
+    fn test_err_eof() {
+        let error = Error::CouldNotRead(xdrfile::exdrENDOFFILE);
+        assert!(error.is_eof());
 
-        assert_eq!(result_invalid, Err(Error::PathInvalidCstring));
+        let error = Error::CouldNotRead(xdrfile::exdrENDOFFILE + 1);
+        assert!(!error.is_eof());
 
-        let result_valid = path_to_cstring("valid/path");
+        let error = Error::CouldNotWrite(0);
+        assert!(!error.is_eof());
 
-        assert_eq!(result_valid, Ok(CString::new("valid/path")?));
+        let error = Error::CouldNotFlush(255);
+        assert!(!error.is_eof());
+
+        let error = Error::CouldNotOpenFile(PathBuf::from("not/a/file"), FileMode::Read);
+        assert!(!error.is_eof());
+    }
+
+    #[test]
+    fn test_err_file_eof() -> Result<(), Box<dyn std::error::Error>> {
+        let tempfile = NamedTempFile::new()?;
+        let tmp_path = tempfile.path();
+
+        let natoms: u32 = 2;
+        let frame = Frame {
+            num_atoms: natoms,
+            step: 5,
+            time: 2.0,
+            box_vector: [[1.0, 2.0, 3.0], [2.0, 1.0, 3.0], [3.0, 2.0, 1.0]],
+            coords: vec![[1.0, 1.0, 1.0], [1.0, 1.0, 1.0]],
+        };
+        let mut f = XTCTrajectory::open_write(&tmp_path)?;
+        f.write(&frame)?;
+        f.flush()?;
+
+        let mut new_frame = Frame::with_capacity(natoms);
+        let mut f = XTCTrajectory::open_read(tmp_path)?;
+
+        f.read(&mut new_frame)?;
+
+        let result = f.read(&mut new_frame); // Should be eof as we only wrote one frame
+        if let Err(e) = result {
+            assert!(e.is_eof());
+        } else {
+            panic!("read two frames after writing one");
+        }
+
+        let mut file = std::fs::File::create(tmp_path)?;
+        use std::io::Write as _;
+        file.write_all(&[0; 999])?;
+        file.flush()?;
+
+        let mut f = XTCTrajectory::open_read(tmp_path)?;
+        let result = f.read(&mut new_frame); // Should be an invalid XTC file
+        if let Err(e) = result {
+            assert!(!e.is_eof());
+        } else {
+            panic!("999 zero bytes was read as a valid XTC file");
+        }
+
         Ok(())
     }
 }
