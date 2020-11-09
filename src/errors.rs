@@ -126,6 +126,8 @@ impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         if let Some(e) = &self.code {
             Some(e)
+        } else if let ErrorTask::ToCString(Some(e)) = &self.task {
+            Some(e)
         } else {
             None
         }
