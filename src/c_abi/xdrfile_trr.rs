@@ -47,19 +47,20 @@ mod tests {
     use tempfile::NamedTempFile;
 
     #[test]
-    fn test_read_trr_natoms() {
-        let path = CString::new("tests/1l2y.trr").unwrap();
+    fn test_read_trr_natoms() -> Result<(), Box<dyn std::error::Error>> {
+        let path = CString::new("tests/1l2y.trr")?;
 
         let mut natoms = 0;
         unsafe {
             read_trr_natoms(path.as_ptr() as *const i8, &mut natoms);
         }
         assert!(natoms == 304);
+        Ok(())
     }
 
     #[test]
-    fn test_read_trr_nframes() {
-        let path = CString::new("tests/1l2y.trr").unwrap();
+    fn test_read_trr_nframes() -> Result<(), Box<dyn std::error::Error>> {
+        let path = CString::new("tests/1l2y.trr")?;
         let mut nframes: u64 = 0;
 
         unsafe {
@@ -67,12 +68,18 @@ mod tests {
             assert!(code as u32 == exdrOK);
         }
         assert!(nframes == 38, "{:?}", nframes);
+        Ok(())
     }
 
     #[test]
-    fn test_read_write_trr() {
-        let tempfile = NamedTempFile::new().unwrap();
-        let tmp_path = CString::new(tempfile.path().to_str().unwrap()).unwrap();
+    fn test_read_write_trr() -> Result<(), Box<dyn std::error::Error>> {
+        let tempfile = NamedTempFile::new()?;
+        let tmp_path = CString::new(
+            tempfile
+                .path()
+                .to_str()
+                .expect("Could not convert path to str"),
+        )?;
 
         // write atoms to tempfile
         let natoms: i32 = 2;
@@ -86,7 +93,7 @@ mod tests {
         let f: Vec<Rvec> = vec![[1.0, 1.0, 1.0], [1.0, 1.0, 1.0]];
 
         unsafe {
-            let mode = CString::new("w").unwrap();
+            let mode = CString::new("w")?;
             let xdr = xdrfile_open(tmp_path.as_ptr(), mode.as_ptr());
             let write_code = write_trr(
                 xdr,
@@ -114,7 +121,7 @@ mod tests {
         let f2: Vec<Rvec> = vec![[0.0, 0.0, 0.0]; 2];
 
         unsafe {
-            let mode = CString::new("r").unwrap();
+            let mode = CString::new("r")?;
             let xdr = xdrfile_open(tmp_path.as_ptr(), mode.as_ptr());
             let read_code = read_trr(
                 xdr,
@@ -139,5 +146,6 @@ mod tests {
         assert!(x2 == x);
         assert!(v2 == v);
         assert!(f2 == f);
+        Ok(())
     }
 }

@@ -12,29 +12,27 @@ files with a safe api.
 ```rust
 use xdrfile::*;
 
-// get a handle to the file
-let mut trj = XTCTrajectory::open_read("tests/1l2y.xtc").unwrap();
+fn main() -> Result<()> {
+    // get a handle to the file
+    let mut trj = XTCTrajectory::open_read("tests/1l2y.xtc")?;
 
-// find number of atoms in the file
-let num_atoms = trj.get_num_atoms().unwrap();
+    // find number of atoms in the file
+    let num_atoms = trj.get_num_atoms()?;
 
-// a frame object is used to get to read or write from a trajectory
-// without instantiating data arrays for every step
-let mut frame = Frame::with_capacity(num_atoms);
+    // a frame object is used to get to read or write from a trajectory
+    // without instantiating data arrays for every step
+    let mut frame = Frame::with_capacity(num_atoms);
 
-// read the first frame of the trajectory
-let result = trj.read(&mut frame);
-match result {
-   Ok(_) => {
-       assert_eq!(frame.step, 1);
-       assert_eq!(frame.num_atoms, num_atoms);
+    // read the first frame of the trajectory
+    trj.read(&mut frame)?;
 
-       let first_atom_coords = frame.coords[0];
-       assert_eq!(first_atom_coords, [-0.8901, 0.4127, -0.055499997]);
-   }
-   Err(msg) => {
-       panic!("Something went wrong: {}", msg);    
-   }
+    assert_eq!(frame.step, 1);
+    assert_eq!(frame.num_atoms, num_atoms);
+
+    let first_atom_coords = frame.coords[0];
+    assert_eq!(first_atom_coords, [-0.8901, 0.4127, -0.055499997]);
+
+    Ok(())
 }
 ```
 
@@ -47,13 +45,17 @@ Rc is required)
 ```rust
 use xdrfile::*;
 
-// get a handle to the file
-let trj = XTCTrajectory::open_read("tests/1l2y.xtc").unwrap();
+fn main() -> Result<()> {
+    // get a handle to the file
+    let trj = XTCTrajectory::open_read("tests/1l2y.xtc")?;
 
-// iterate over all frames
-for (idx, frame) in trj.into_iter().filter_map(Result::ok).enumerate() {
-    println!("{}", frame.time);
-    assert_eq!(idx+1, frame.step as usize);
+    // iterate over all frames
+    for (idx, result) in trj.into_iter().enumerate() {
+        let frame = result?;
+        println!("{}", frame.time);
+        assert_eq!(idx+1, frame.step as usize);
+    }
+    Ok(())
 }
 ```
 

@@ -43,19 +43,20 @@ mod tests {
     use tempfile::NamedTempFile;
 
     #[test]
-    fn test_read_xtc_natoms() {
-        let path = CString::new("tests/1l2y.xtc").unwrap();
+    fn test_read_xtc_natoms() -> Result<(), Box<dyn std::error::Error>> {
+        let path = CString::new("tests/1l2y.xtc")?;
 
         let mut natoms = 0;
         unsafe {
             read_xtc_natoms(path.as_ptr() as *mut i8, &mut natoms);
         }
         assert!(natoms == 304);
+        Ok(())
     }
 
     #[test]
-    fn test_read_xtc_nframes() {
-        let path = CString::new("tests/1l2y.xtc").unwrap();
+    fn test_read_xtc_nframes() -> Result<(), Box<dyn std::error::Error>> {
+        let path = CString::new("tests/1l2y.xtc")?;
         let mut nframes: u64 = 0;
 
         unsafe {
@@ -63,12 +64,18 @@ mod tests {
             assert!(code as u32 == exdrOK);
         }
         assert!(nframes == 38, "{:?}", nframes);
+        Ok(())
     }
 
     #[test]
-    fn test_read_write_xtc() {
-        let tempfile = NamedTempFile::new().unwrap();
-        let tmp_path = CString::new(tempfile.path().to_str().unwrap()).unwrap();
+    fn test_read_write_xtc() -> Result<(), Box<dyn std::error::Error>> {
+        let tempfile = NamedTempFile::new()?;
+        let tmp_path = CString::new(
+            tempfile
+                .path()
+                .to_str()
+                .expect("Could not convert path to str"),
+        )?;
 
         // write atoms to tempfile
         let natoms: i32 = 2;
@@ -78,7 +85,7 @@ mod tests {
         let x: Vec<Rvec> = vec![[1.0, 1.0, 1.0], [1.0, 1.0, 1.0]];
 
         unsafe {
-            let mode = CString::new("w").unwrap();
+            let mode = CString::new("w")?;
             let xdr = xdrfile_open(tmp_path.as_ptr(), mode.as_ptr());
             let write_code = write_xtc(
                 xdr,
@@ -101,7 +108,7 @@ mod tests {
         let mut prec: f32 = 0.0;
 
         unsafe {
-            let mode = CString::new("r").unwrap();
+            let mode = CString::new("r")?;
             let xdr = xdrfile_open(tmp_path.as_ptr(), mode.as_ptr());
             let read_code = read_xtc(
                 xdr,
@@ -121,5 +128,6 @@ mod tests {
         assert!(time2 == time);
         assert!(box_vec2 == box_vec);
         assert!(x2 == x);
+        Ok(())
     }
 }
