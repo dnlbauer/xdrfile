@@ -102,12 +102,11 @@ impl FileMode {
 
 fn path_to_cstring(path: impl AsRef<Path>) -> Result<CString> {
     use ErrorKind::InvalidOsStr;
-    use ErrorTask::ToCString;
     let s = path
         .as_ref()
         .to_str()
-        .ok_or_else(|| Error::from(InvalidOsStr).with_task(ToCString))?;
-    CString::new(s).map_err(|e| Error::from(e).with_task(ToCString))
+        .ok_or_else(|| Error::from(InvalidOsStr))?;
+    CString::new(s).map_err(|e| Error::from(e))
 }
 
 /// A safe wrapper around the c implementation of an XDRFile
@@ -140,7 +139,7 @@ impl XDRFile {
                 })
             } else {
                 // Something went wrong. But the C api does not tell us what
-                Err(Error::from((path, filemode)).with_task(ErrorTask::OpenFile))
+                Err(Error::from((path, filemode)))
             }
         }
     }
@@ -505,7 +504,7 @@ mod tests {
 
         let result = xtc_traj.read(&mut frame);
         if let Err(e) = result {
-            assert_eq!(e.task(), &ErrorTask::Read);
+            assert_eq!(e.task(), &Some(ErrorTask::Read));
             assert!(if let ErrorKind::WrongSizeFrame { .. } = e.kind() {
                 true
             } else {
@@ -522,7 +521,11 @@ mod tests {
         let result_invalid = path_to_cstring(PathBuf::from("invalid/\0path"));
 
         if let Err(err) = result_invalid {
-            assert!(err.task() == &ErrorTask::ToCString);
+            match err.kind() {
+                ErrorKind::NullInStr(_) => (),
+                ErrorKind::InvalidOsStr => (),
+                _ => panic!("Improper error type for path_to_cstring"),
+            }
         } else {
             panic!("path_to_cstring should return Err if there are null bytes");
         }
@@ -539,13 +542,10 @@ mod tests {
 
         let path = Path::new(&file_name);
         if let Err(e) = XDRFile::open(file_name, FileMode::Read) {
-            if let (
-                ErrorTask::OpenFile,
-                ErrorKind::CouldNotOpen {
-                    path: err_path,
-                    mode: err_mode,
-                },
-            ) = (e.task(), e.kind())
+            if let ErrorKind::CouldNotOpen {
+                path: err_path,
+                mode: err_mode,
+            } = e.kind()
             {
                 assert_eq!(path, err_path);
                 assert_eq!(FileMode::Read, *err_mode)
@@ -560,13 +560,10 @@ mod tests {
         let file_name = "README.md"; // not a trajectory
         let mut trr = TRRTrajectory::open_read(file_name)?;
         if let Err(e) = trr.get_num_atoms() {
-            match e.task() {
-                ErrorTask::ReadNumAtoms => {
-                    assert_eq!(Some(ErrorCode::ExdrMagic), e.code());
-                }
-                _ => panic!("Wrong Error type"),
-            }
-        };
+            assert_eq!(Some(ErrorCode::ExdrMagic), e.code());
+        } else {
+            panic!("Should not be able to read number of atoms from readme");
+        }
         Ok(())
     }
 
@@ -576,12 +573,9 @@ mod tests {
         let mut frame = Frame::with_capacity(1);
         let mut trr = TRRTrajectory::open_read(file_name)?;
         if let Err(e) = trr.read(&mut frame) {
-            match e.task() {
-                ErrorTask::Read => {
-                    assert_eq!(Some(ErrorCode::ExdrMagic), e.code());
-                }
-                _ => panic!("Wrong Error type"),
-            }
+            assert_eq!(Some(ErrorCode::ExdrMagic), e.code());
+        } else {
+            panic!("Should not be able to read number of atoms from readme");
         }
         Ok(())
     }

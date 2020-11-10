@@ -3,51 +3,17 @@ use crate::FileMode;
 use crate::Frame;
 use std::path::{Path, PathBuf};
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-/// The task being attempted when an error was returned
-pub enum ErrorTask {
-    /// A file was being opened
-    OpenFile,
-    /// The number of atoms was being read from a file
-    ReadNumAtoms,
-    /// A frame was being read from a file
-    Read,
-    /// A frame was being written to a file
-    Write,
-    /// An file was being flushed to disk
-    Flush,
-    /// A path was being converted to a CString
-    ToCString,
-    /// Placeholder until a task can be provided
-    UnknownTask,
-}
-
-impl std::fmt::Display for ErrorTask {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        use ErrorTask::*;
-        match &self {
-            OpenFile => write!(f, "Failed to open file as trajectory"),
-            ReadNumAtoms => write!(f, "Failed to read atom number from trajectory"),
-            Read => write!(f, "Failed to read trajectory"),
-            Write => write!(f, "Failed to write trajectory"),
-            Flush => write!(f, "Failed to flush trajectory"),
-            ToCString => write!(f, "Failed to convert to CString"),
-            UnknownTask => write!(f, "Task failed"),
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq)]
 /// Error type for the xdrfile library
 pub struct Error {
     kind: ErrorKind,
-    task: ErrorTask,
+    task: Option<ErrorTask>,
     source: Option<Box<Error>>,
 }
 
 impl Error {
     /// Get the task being attempted when the error was returned
-    pub fn task(&self) -> &ErrorTask {
+    pub fn task(&self) -> &Option<ErrorTask> {
         &self.task
     }
 
@@ -82,7 +48,7 @@ impl Error {
         let kind;
         let source;
 
-        if let ErrorTask::UnknownTask = self.task {
+        if let None = self.task {
             kind = self.kind;
             source = None
         } else {
@@ -90,7 +56,11 @@ impl Error {
             source = Some(Box::new(self))
         };
 
-        Self { kind, task, source }
+        Self {
+            kind,
+            task: Some(task),
+            source,
+        }
     }
 
     /// Convert an error code and output value from a C call to a Result
@@ -106,7 +76,7 @@ impl Error {
         } else {
             Err(Self {
                 kind: ErrorKind::from(code),
-                task,
+                task: Some(task),
                 source: None,
             })
         }
@@ -116,7 +86,7 @@ impl Error {
 impl<K: Into<ErrorKind>> From<K> for Error {
     fn from(kind: K) -> Self {
         Self {
-            task: ErrorTask::UnknownTask,
+            task: None,
             kind: kind.into(),
             source: None,
         }
@@ -125,7 +95,11 @@ impl<K: Into<ErrorKind>> From<K> for Error {
 
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{task}: {kind}", task = self.task, kind = self.kind)
+        if let Some(task) = self.task {
+            write!(f, "{task}: {kind}", task = task, kind = self.kind)
+        } else {
+            write!(f, "{}", self.kind)
+        }
     }
 }
 
@@ -139,6 +113,31 @@ impl std::error::Error for Error {
                 NullInStr(err) => Some(err),
                 _ => None,
             }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+/// The task being attempted if ErrorKind is ambiguous
+pub enum ErrorTask {
+    /// The number of atoms was being read from a file
+    ReadNumAtoms,
+    /// A frame was being read from a file
+    Read,
+    /// A frame was being written to a file
+    Write,
+    /// An file was being flushed to disk
+    Flush,
+}
+
+impl std::fmt::Display for ErrorTask {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use ErrorTask::*;
+        match &self {
+            ReadNumAtoms => write!(f, "Failed to read atom number from trajectory"),
+            Read => write!(f, "Failed to read trajectory"),
+            Write => write!(f, "Failed to write trajectory"),
+            Flush => write!(f, "Failed to flush trajectory"),
         }
     }
 }
@@ -297,35 +296,35 @@ mod tests {
         use ErrorKind::ErrorCode as Code;
         let error = Error {
             kind: Code(c_abi::xdrfile::exdrENDOFFILE.into()),
-            task: ErrorTask::Read,
+            task: Some(ErrorTask::Read),
             source: None,
         };
         assert!(error.is_eof());
 
         let error = Error {
             kind: Code(ErrorCode::ExdrEndOfFile),
-            task: ErrorTask::ReadNumAtoms,
+            task: Some(ErrorTask::ReadNumAtoms),
             source: None,
         };
         assert!(error.is_eof());
 
         let error = Error {
             kind: Code((c_abi::xdrfile::exdrENDOFFILE + 1).into()),
-            task: ErrorTask::Read,
+            task: None,
             source: None,
         };
         assert!(!error.is_eof());
 
         let error = Error {
             kind: Code(0.into()),
-            task: ErrorTask::Write,
+            task: Some(ErrorTask::Write),
             source: None,
         };
         assert!(!error.is_eof());
 
         let error = Error {
             kind: Code(255.into()),
-            task: ErrorTask::Flush,
+            task: Some(ErrorTask::Flush),
             source: None,
         };
         assert!(!error.is_eof());
@@ -335,7 +334,7 @@ mod tests {
                 path: PathBuf::from("not/a/file"),
                 mode: FileMode::Read,
             },
-            task: ErrorTask::OpenFile,
+            task: None,
             source: None,
         };
         assert!(!error.is_eof());
