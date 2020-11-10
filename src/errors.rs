@@ -304,7 +304,7 @@ mod tests {
         let err = Error::from((path, mode));
         assert_eq!(expected, err);
 
-        let frame = Frame::with_capacity(0);
+        let frame = Frame::with_len(0);
         let expected = Error::WrongSizeFrame {
             expected: 10,
             found: 0,

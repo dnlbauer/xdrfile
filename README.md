@@ -17,17 +17,17 @@ fn main() -> Result<()> {
     let mut trj = XTCTrajectory::open_read("tests/1l2y.xtc")?;
 
     // find number of atoms in the file
-    let num_atoms = trj.get_num_atoms()?;
+    let num_atoms = trj.get_num_atoms()? as usize;
 
     // a frame object is used to get to read or write from a trajectory
     // without instantiating data arrays for every step
-    let mut frame = Frame::with_capacity(num_atoms);
+    let mut frame = Frame::with_len(num_atoms);
 
     // read the first frame of the trajectory
     trj.read(&mut frame)?;
 
     assert_eq!(frame.step, 1);
-    assert_eq!(frame.num_atoms, num_atoms);
+    assert_eq!(frame.len(), num_atoms);
 
     let first_atom_coords = frame.coords[0];
     assert_eq!(first_atom_coords, [-0.8901, 0.4127, -0.055499997]);

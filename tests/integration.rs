@@ -8,7 +8,7 @@ mod integration {
     fn test_use_library() -> Result<()> {
         let mut trj = XTCTrajectory::open_read("tests/1l2y.xtc")?;
         let num_atoms = trj.get_num_atoms()?;
-        let mut frame = Frame::with_capacity(num_atoms);
+        let mut frame = Frame::with_len(num_atoms as usize);
 
         trj.read(&mut frame)?;
         trj.read(&mut frame)?;
