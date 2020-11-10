@@ -2,6 +2,7 @@ use crate::c_abi;
 use crate::FileMode;
 use crate::Frame;
 use std::path::{Path, PathBuf};
+use std::error::Error as StdError;
 
 /// Error type for the xdrfile library
 #[derive(Debug, Clone, PartialEq)]
@@ -21,7 +22,7 @@ pub enum Error {
         path: PathBuf,
         mode: FileMode,
     },
-    /// A path could not be converted to &OsStr, probably because it is invalid unicode
+    /// A path could not be converted to &OsStr
     InvalidOsStr,
     /// A path could not be converted to &CStr because it had a null byte
     NullInStr(std::ffi::NulError),
@@ -31,7 +32,7 @@ pub enum Error {
 impl Error {
     /// Get the error code returned by the C API, if any
     pub fn code(&self) -> Option<ErrorCode> {
-        use std::error::Error as _;
+        // use std::error::Error as _;
         if let Error::CApiError { code, .. } = self {
             Some(*code)
         } else if let Some(e) = self.source() {
@@ -43,7 +44,7 @@ impl Error {
 
     /// Get the task being attempted when the C API returned an error, if any
     pub fn task(&self) -> Option<ErrorTask> {
-        use std::error::Error as _;
+        // use std::error::Error as _;
         if let Error::CApiError { task, .. } = self {
             Some(*task)
         } else if let Some(e) = self.source() {
@@ -76,10 +77,9 @@ impl Error {
 
 impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        use Error::*;
         match &self {
-            NullInStr(err) => Some(err),
-            CouldNotCheckNAtoms(err) => Some(err.as_ref()),
+            Error::NullInStr(err) => Some(err),
+            Error::CouldNotCheckNAtoms(err) => Some(err.as_ref()),
             _ => None,
         }
     }
@@ -139,8 +139,8 @@ impl std::fmt::Display for Error {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
 /// The task being attempted when the C API returns an error
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ErrorTask {
     /// The number of atoms was being read from a file
     ReadNumAtoms,
@@ -164,8 +164,8 @@ impl std::fmt::Display for ErrorTask {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Copy)]
 /// Error codes returned from the C API
+#[derive(Debug, Clone, PartialEq, Copy)]
 pub enum ErrorCode {
     /// No error, C API returned successfully
     ExdrOk,
@@ -202,10 +202,7 @@ pub enum ErrorCode {
 impl ErrorCode {
     /// True if the error is an end of file error, false otherwise
     pub fn is_eof(&self) -> bool {
-        match self {
-            Self::ExdrEndOfFile => true,
-            _ => false,
-        }
+        matches!(self, Self::ExdrEndOfFile)
     }
 }
 

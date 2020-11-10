@@ -101,8 +101,8 @@ impl FileMode {
 }
 
 fn path_to_cstring(path: impl AsRef<Path>) -> Result<CString> {
-    let s = path.as_ref().to_str().ok_or_else(|| Error::InvalidOsStr)?;
-    CString::new(s).map_err(|e| Error::from(e))
+    let s = path.as_ref().to_str().ok_or(Error::InvalidOsStr)?;
+    CString::new(s).map_err(Error::from)
 }
 
 /// A safe wrapper around the c implementation of an XDRFile
@@ -135,7 +135,10 @@ impl XDRFile {
                 })
             } else {
                 // Something went wrong. But the C api does not tell us what
-                Err(Error::from((path, filemode)))
+                Err(Error::CouldNotOpen {
+                    path: path.to_owned(),
+                    mode: filemode
+                })
             }
         }
     }
@@ -500,11 +503,7 @@ mod tests {
 
         let result = xtc_traj.read(&mut frame);
         if let Err(e) = result {
-            assert!(if let Error::WrongSizeFrame { .. } = e {
-                true
-            } else {
-                false
-            });
+            assert!(matches!(e, Error::WrongSizeFrame { .. }));
         } else {
             panic!("A read with an incorrectly sized frame should not succeed")
         }
