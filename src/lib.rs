@@ -14,7 +14,7 @@
 //!     let mut trj = XTCTrajectory::open_read("tests/1l2y.xtc")?;
 //!
 //!     // find number of atoms in the file
-//!     let num_atoms = trj.get_num_atoms()? as usize;
+//!     let num_atoms = trj.get_num_atoms()?;
 //!
 //!     // a frame object is used to get to read or write from a trajectory
 //!     // without instantiating data arrays for every step
@@ -50,7 +50,7 @@
 //!     for (idx, result) in trj.into_iter().enumerate() {
 //!         let frame = result?;
 //!         println!("{}", frame.time);
-//!         assert_eq!(idx+1, frame.step as usize);
+//!         assert_eq!(idx+1, frame.step);
 //!     }
 //!     Ok(())
 //! }
@@ -205,14 +205,14 @@ pub trait Trajectory {
     fn flush(&mut self) -> Result<()>;
 
     /// Get the number of atoms from the give trajectory
-    fn get_num_atoms(&mut self) -> Result<u32>;
+    fn get_num_atoms(&mut self) -> Result<usize>;
 }
 
 /// Read/Write XTC Trajectories
 pub struct XTCTrajectory {
     handle: XDRFile,
     precision: Cell<f32>, // internal mutability required for read method
-    num_atoms: Lazy<Result<u32>>,
+    num_atoms: Lazy<Result<usize>>,
 }
 
 impl XTCTrajectory {
@@ -245,9 +245,9 @@ impl Trajectory for XTCTrajectory {
     fn read(&mut self, frame: &mut Frame) -> Result<()> {
         let mut step: i32 = 0;
 
-        let num_atoms =
-            self.get_num_atoms()
-                .map_err(|e| Error::CouldNotCheckNAtoms(Box::new(e)))? as usize;
+        let num_atoms = self
+            .get_num_atoms()
+            .map_err(|e| Error::CouldNotCheckNAtoms(Box::new(e)))?;
         if num_atoms != frame.coords.len() {
             Err((&*frame, num_atoms))?;
         }
@@ -265,7 +265,7 @@ impl Trajectory for XTCTrajectory {
                 frame.coords.as_mut_ptr(),
                 &mut self.precision.get(),
             ) as u32;
-            frame.step = step as u32;
+            frame.step = step as usize;
             if let Some(err) = check_code(code, ErrorTask::Read) {
                 Err(err)
             } else {
@@ -304,7 +304,7 @@ impl Trajectory for XTCTrajectory {
         }
     }
 
-    fn get_num_atoms(&mut self) -> Result<u32> {
+    fn get_num_atoms(&mut self) -> Result<usize> {
         self.num_atoms
             .get_or_create(|| {
                 let mut num_atoms: i32 = 0;
@@ -320,7 +320,7 @@ impl Trajectory for XTCTrajectory {
                     if let Some(err) = check_code(code, ErrorTask::ReadNumAtoms) {
                         Err(err)
                     } else {
-                        Ok(num_atoms as u32)
+                        Ok(num_atoms as usize)
                     }
                 }
             })
@@ -344,7 +344,7 @@ impl io::Seek for XTCTrajectory {
 /// Read/Write TRR Trajectories
 pub struct TRRTrajectory {
     handle: XDRFile,
-    num_atoms: Lazy<Result<u32>>,
+    num_atoms: Lazy<Result<usize>>,
 }
 
 impl TRRTrajectory {
@@ -377,9 +377,9 @@ impl Trajectory for TRRTrajectory {
         let mut step: i32 = 0;
         let mut lambda: f32 = 0.0;
 
-        let num_atoms =
-            self.get_num_atoms()
-                .map_err(|e| Error::CouldNotCheckNAtoms(Box::new(e)))? as usize;
+        let num_atoms = self
+            .get_num_atoms()
+            .map_err(|e| Error::CouldNotCheckNAtoms(Box::new(e)))?;
         if num_atoms != frame.coords.len() {
             Err((&*frame, num_atoms))?;
         }
@@ -400,7 +400,8 @@ impl Trajectory for TRRTrajectory {
                 std::ptr::null_mut(),
                 std::ptr::null_mut(),
             ) as u32;
-            frame.step = step as u32;
+
+            frame.step = step as usize;
             if let Some(err) = check_code(code, ErrorTask::Read) {
                 Err(err)
             } else {
@@ -441,7 +442,7 @@ impl Trajectory for TRRTrajectory {
         }
     }
 
-    fn get_num_atoms(&mut self) -> Result<u32> {
+    fn get_num_atoms(&mut self) -> Result<usize> {
         self.num_atoms
             .get_or_create(|| {
                 let mut num_atoms: i32 = 0;
@@ -456,7 +457,7 @@ impl Trajectory for TRRTrajectory {
                     if let Some(err) = check_code(code, ErrorTask::ReadNumAtoms) {
                         Err(err)
                     } else {
-                        Ok(num_atoms as u32)
+                        Ok(num_atoms as usize)
                     }
                 }
             })
@@ -490,7 +491,7 @@ mod tests {
         let tempfile = NamedTempFile::new().expect("Could not create temporary file");
         let tmp_path = tempfile.path();
 
-        let natoms: u32 = 2;
+        let natoms = 2;
         let frame = Frame {
             step: 5,
             time: 2.0,
@@ -505,7 +506,7 @@ mod tests {
         }
         f.flush()?;
 
-        let mut new_frame = Frame::with_len(natoms as usize);
+        let mut new_frame = Frame::with_len(natoms);
         let mut f = XTCTrajectory::open_read(tmp_path)?;
         let num_atoms = f.get_num_atoms()?;
         assert_eq!(num_atoms, natoms);
@@ -567,7 +568,7 @@ mod tests {
     pub fn test_manual_loop() -> Result<(), Box<dyn std::error::Error>> {
         let mut xtc_frames = Vec::new();
         let mut xtc_traj = XTCTrajectory::open_read("tests/1l2y.xtc")?;
-        let mut frame = Frame::with_len(xtc_traj.get_num_atoms()? as usize);
+        let mut frame = Frame::with_len(xtc_traj.get_num_atoms()?);
 
         while let Ok(()) = xtc_traj.read(&mut frame) {
             xtc_frames.push(frame.clone());

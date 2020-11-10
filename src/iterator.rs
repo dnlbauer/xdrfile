@@ -2,7 +2,7 @@ use crate::*;
 use std::rc::Rc;
 
 fn into_iter_inner<T: Trajectory>(mut traj: T) -> TrajectoryIterator<T> {
-    let num_atoms = traj.get_num_atoms().map(|n| n as usize);
+    let num_atoms = traj.get_num_atoms();
     let frame = match &num_atoms {
         Ok(num_atoms) => Frame::with_len(*num_atoms),
         Err(_) => Frame::new(),

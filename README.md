@@ -17,7 +17,7 @@ fn main() -> Result<()> {
     let mut trj = XTCTrajectory::open_read("tests/1l2y.xtc")?;
 
     // find number of atoms in the file
-    let num_atoms = trj.get_num_atoms()? as usize;
+    let num_atoms = trj.get_num_atoms()?;
 
     // a frame object is used to get to read or write from a trajectory
     // without instantiating data arrays for every step
@@ -53,7 +53,7 @@ fn main() -> Result<()> {
     for (idx, result) in trj.into_iter().enumerate() {
         let frame = result?;
         println!("{}", frame.time);
-        assert_eq!(idx+1, frame.step as usize);
+        assert_eq!(idx+1, frame.step);
     }
     Ok(())
 }

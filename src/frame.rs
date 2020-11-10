@@ -2,7 +2,7 @@
 #[derive(Clone, Debug)]
 pub struct Frame {
     /// Trajectory step
-    pub step: u32,
+    pub step: usize,
 
     /// Time step (usually in picoseconds)
     pub time: f32,
