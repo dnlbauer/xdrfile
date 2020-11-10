@@ -18,7 +18,7 @@ pub enum ErrorTask {
     Flush,
     /// A path was being converted to a CString
     ToCString,
-    /// Unknown task
+    /// Placeholder until a task can be provided
     UnknownTask,
 }
 
@@ -74,12 +74,23 @@ impl Error {
         }
     }
 
+    /// Change the task of the error
+    ///
+    /// Unless the current task is `UnknownTask`, the current error will be
+    /// set as the source
     pub fn with_task(self, task: ErrorTask) -> Self {
-        Self {
-            kind: self.kind.clone(),
-            task,
-            source: Some(Box::new(self)),
-        }
+        let kind;
+        let source;
+
+        if let ErrorTask::UnknownTask = self.task {
+            kind = self.kind;
+            source = None
+        } else {
+            kind = self.kind.clone();
+            source = Some(Box::new(self))
+        };
+
+        Self { kind, task, source }
     }
 
     /// Convert an error code and output value from a C call to a Result
@@ -109,38 +120,6 @@ impl<K: Into<ErrorKind>> From<K> for Error {
             kind: kind.into(),
             source: None,
         }
-    }
-}
-
-impl From<std::ffi::NulError> for ErrorKind {
-    fn from(err: std::ffi::NulError) -> Self {
-        Self::NullInStr(err)
-    }
-}
-
-impl From<(&Path, FileMode)> for ErrorKind {
-    fn from(value: (&Path, FileMode)) -> Self {
-        let (path, mode) = value;
-        ErrorKind::CouldNotOpen {
-            path: path.to_owned(),
-            mode,
-        }
-    }
-}
-
-impl From<(&Frame, usize)> for ErrorKind {
-    fn from(value: (&Frame, usize)) -> Self {
-        let (frame, num_atoms) = value;
-        ErrorKind::WrongSizeFrame {
-            expected: num_atoms,
-            found: frame.coords.len(),
-        }
-    }
-}
-
-impl From<ErrorCode> for ErrorKind {
-    fn from(code: ErrorCode) -> Self {
-        ErrorKind::ErrorCode(code)
     }
 }
 
@@ -176,6 +155,38 @@ pub enum ErrorKind {
     InvalidOsStr,
     /// &OsStr could not be converted to &CStr because it had a null byte
     NullInStr(std::ffi::NulError),
+}
+
+impl From<std::ffi::NulError> for ErrorKind {
+    fn from(err: std::ffi::NulError) -> Self {
+        Self::NullInStr(err)
+    }
+}
+
+impl From<(&Path, FileMode)> for ErrorKind {
+    fn from(value: (&Path, FileMode)) -> Self {
+        let (path, mode) = value;
+        ErrorKind::CouldNotOpen {
+            path: path.to_owned(),
+            mode,
+        }
+    }
+}
+
+impl From<(&Frame, usize)> for ErrorKind {
+    fn from(value: (&Frame, usize)) -> Self {
+        let (frame, num_atoms) = value;
+        ErrorKind::WrongSizeFrame {
+            expected: num_atoms,
+            found: frame.coords.len(),
+        }
+    }
+}
+
+impl From<ErrorCode> for ErrorKind {
+    fn from(code: ErrorCode) -> Self {
+        ErrorKind::ErrorCode(code)
+    }
 }
 
 impl std::fmt::Display for ErrorKind {
