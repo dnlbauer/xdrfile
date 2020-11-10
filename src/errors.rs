@@ -7,22 +7,35 @@ use std::path::{Path, PathBuf};
 #[derive(Debug, Clone, PartialEq)]
 pub enum Error {
     /// An error code from the C API
-    CApiError { code: ErrorCode, task: ErrorTask },
+    CApiError {
+        code: ErrorCode,
+        task: ErrorTask,
+    },
     /// Passed in a frame of the wrong size
-    WrongSizeFrame { expected: usize, found: usize },
+    WrongSizeFrame {
+        expected: usize,
+        found: usize,
+    },
     /// C API failed to open a file (No return code provided)
-    CouldNotOpen { path: PathBuf, mode: FileMode },
+    CouldNotOpen {
+        path: PathBuf,
+        mode: FileMode,
+    },
     /// A path could not be converted to &OsStr, probably because it is invalid unicode
     InvalidOsStr,
     /// A path could not be converted to &CStr because it had a null byte
     NullInStr(std::ffi::NulError),
+    CouldNotCheckNAtoms(Box<Error>),
 }
 
 impl Error {
     /// Get the error code returned by the C API, if any
     pub fn code(&self) -> Option<ErrorCode> {
+        use std::error::Error as _;
         if let Error::CApiError { code, .. } = self {
             Some(*code)
+        } else if let Some(e) = self.source() {
+            e.downcast_ref::<Self>().and_then(Self::code)
         } else {
             None
         }
@@ -63,6 +76,7 @@ impl std::error::Error for Error {
         use Error::*;
         match &self {
             NullInStr(err) => Some(err),
+            CouldNotCheckNAtoms(err) => Some(err.as_ref()),
             _ => None,
         }
     }
@@ -114,6 +128,10 @@ impl std::fmt::Display for Error {
             }
             InvalidOsStr => write!(f, "Paths must be valid unicode on this platform"),
             NullInStr(_err) => write!(f, "Paths cannot include null bytes"),
+            CouldNotCheckNAtoms(_err) => write!(
+                f,
+                "Failed to check number of atoms in trajectory while reading a frame"
+            ),
         }
     }
 }

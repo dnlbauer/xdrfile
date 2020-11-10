@@ -202,7 +202,9 @@ impl Trajectory for XTCTrajectory {
     fn read(&mut self, frame: &mut Frame) -> Result<()> {
         let mut step: i32 = 0;
 
-        let num_atoms = self.get_num_atoms()? as usize;
+        let num_atoms = self
+            .get_num_atoms()
+            .map_err(|e| Error::CouldNotCheckNAtoms(Box::new(e)))? as usize;
         if num_atoms != frame.coords.len() {
             return Err(Error::from((&*frame, num_atoms)));
         }
@@ -303,7 +305,9 @@ impl Trajectory for TRRTrajectory {
         let mut step: i32 = 0;
         let mut lambda: f32 = 0.0;
 
-        let num_atoms = self.get_num_atoms()? as usize;
+        let num_atoms = self
+            .get_num_atoms()
+            .map_err(|e| Error::CouldNotCheckNAtoms(Box::new(e)))? as usize;
         if num_atoms != frame.coords.len() {
             return Err(Error::from((&*frame, num_atoms)));
         }
