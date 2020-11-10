@@ -96,9 +96,9 @@ pub enum ErrorKind {
     WrongSizeFrame { expected: usize, found: usize },
     /// C API failed to open a file (No return code provided)
     CouldNotOpen { path: PathBuf, mode: FileMode },
-    /// &str could not be converted to &OsStr, probably because it is invalid unicode
+    /// A path could not be converted to &OsStr, probably because it is invalid unicode
     InvalidOsStr,
-    /// &OsStr could not be converted to &CStr because it had a null byte
+    /// A path could not be converted to &CStr because it had a null byte
     NullInStr(std::ffi::NulError),
 }
 
@@ -146,8 +146,8 @@ impl std::fmt::Display for ErrorKind {
             CouldNotOpen { path, mode } => {
                 write!(f, "Could not open file at {:?} in mode {:?}", path, mode)
             }
-            InvalidOsStr => write!(f, "CStr must be valid unicode on this platform"),
-            NullInStr(_err) => write!(f, "CStr cannot include null bytes"),
+            InvalidOsStr => write!(f, "Paths must be valid unicode on this platform"),
+            NullInStr(_err) => write!(f, "Paths cannot include null bytes"),
         }
     }
 }
