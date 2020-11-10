@@ -101,11 +101,7 @@ impl FileMode {
 }
 
 fn path_to_cstring(path: impl AsRef<Path>) -> Result<CString> {
-    use ErrorKind::InvalidOsStr;
-    let s = path
-        .as_ref()
-        .to_str()
-        .ok_or_else(|| Error::from(InvalidOsStr))?;
+    let s = path.as_ref().to_str().ok_or_else(|| Error::InvalidOsStr)?;
     CString::new(s).map_err(|e| Error::from(e))
 }
 
@@ -500,7 +496,7 @@ mod tests {
 
         let result = xtc_traj.read(&mut frame);
         if let Err(e) = result {
-            assert!(if let ErrorKind::WrongSizeFrame { .. } = e.kind() {
+            assert!(if let Error::WrongSizeFrame { .. } = e {
                 true
             } else {
                 false
@@ -516,9 +512,9 @@ mod tests {
         let result_invalid = path_to_cstring(PathBuf::from("invalid/\0path"));
 
         if let Err(err) = result_invalid {
-            match err.kind() {
-                ErrorKind::NullInStr(_) => (),
-                ErrorKind::InvalidOsStr => (),
+            match err {
+                Error::NullInStr(_) => (),
+                Error::InvalidOsStr => (),
                 _ => panic!("Improper error type for path_to_cstring"),
             }
         } else {
@@ -537,13 +533,13 @@ mod tests {
 
         let path = Path::new(&file_name);
         if let Err(e) = XDRFile::open(file_name, FileMode::Read) {
-            if let ErrorKind::CouldNotOpen {
+            if let Error::CouldNotOpen {
                 path: err_path,
                 mode: err_mode,
-            } = e.kind()
+            } = e
             {
                 assert_eq!(path, err_path);
-                assert_eq!(FileMode::Read, *err_mode)
+                assert_eq!(FileMode::Read, err_mode)
             } else {
                 panic!("Wrong Error type")
             }
