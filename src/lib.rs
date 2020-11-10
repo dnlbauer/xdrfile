@@ -105,6 +105,21 @@ fn path_to_cstring(path: impl AsRef<Path>) -> Result<CString> {
     CString::new(s).map_err(Error::from)
 }
 
+/// Convert an error code from a C call to an Error
+///
+/// `code` should be an integer return code returned from the C API.
+/// If `code` indicates the function returned successfully, Nothing is returned;
+/// otherwise, the code is converted into the appropriate `Error`.
+pub fn check_code(code: impl Into<ErrorCode>, task: ErrorTask) -> Option<Error> {
+    let code: ErrorCode = code.into();
+    if let ErrorCode::ExdrOk = code {
+        None
+    } else {
+        Some(Error::from((code, task)))
+    }
+}
+
+
 /// A safe wrapper around the c implementation of an XDRFile
 struct XDRFile {
     xdrfile: *mut XDRFILE,
@@ -135,10 +150,7 @@ impl XDRFile {
                 })
             } else {
                 // Something went wrong. But the C api does not tell us what
-                Err(Error::CouldNotOpen {
-                    path: path.to_owned(),
-                    mode: filemode
-                })
+                Err(Error::from((path, filemode)))
             }
         }
     }
@@ -226,7 +238,11 @@ impl Trajectory for XTCTrajectory {
                 &mut self.precision.get(),
             ) as u32;
             frame.step = step as u32;
-            Error::check_code(code, (), ErrorTask::Read)
+            if let Some(err) = check_code(code, ErrorTask::Read) {
+                Err(err)
+            } else {
+                Ok(())
+            }
         }
     }
 
@@ -241,14 +257,22 @@ impl Trajectory for XTCTrajectory {
                 frame.coords[..].as_ptr() as *mut [f32; 3],
                 1000.0,
             ) as u32;
-            Error::check_code(code, (), ErrorTask::Write)
+            if let Some(err) = check_code(code, ErrorTask::Write) {
+                Err(err)
+            } else {
+                Ok(())
+            }
         }
     }
 
     fn flush(&mut self) -> Result<()> {
         unsafe {
             let code = xdr_seek::xdr_flush(self.handle.xdrfile) as u32;
-            Error::check_code(code, (), ErrorTask::Flush)
+            if let Some(err) = check_code(code, ErrorTask::Read) {
+                Err(err)
+            } else {
+                Ok(())
+            }
         }
     }
 
@@ -265,7 +289,11 @@ impl Trajectory for XTCTrajectory {
                     // Reconstitute the CString so it is deallocated correctly
                     let _ = CString::from_raw(path_p);
 
-                    Error::check_code(code, num_atoms as u32, ErrorTask::ReadNumAtoms)
+                    if let Some(err) = check_code(code, ErrorTask::ReadNumAtoms) {
+                        Err(err)
+                    } else {
+                        Ok(num_atoms as u32)
+                    }
                 }
             })
             .clone()
@@ -332,7 +360,11 @@ impl Trajectory for TRRTrajectory {
                 std::ptr::null_mut(),
             ) as u32;
             frame.step = step as u32;
-            Error::check_code(code, (), ErrorTask::Read)
+            if let Some(err) = check_code(code, ErrorTask::Read) {
+                Err(err)
+            } else {
+                Ok(())
+            }
         }
     }
 
@@ -349,14 +381,22 @@ impl Trajectory for TRRTrajectory {
                 std::ptr::null_mut(),
                 std::ptr::null_mut(),
             ) as u32;
-            Error::check_code(code, (), ErrorTask::Write)
+            if let Some(err) = check_code(code, ErrorTask::Write) {
+                Err(err)
+            } else {
+                Ok(())
+            }
         }
     }
 
     fn flush(&mut self) -> Result<()> {
         unsafe {
             let code = xdr_seek::xdr_flush(self.handle.xdrfile) as u32;
-            Error::check_code(code, (), ErrorTask::Flush)
+            if let Some(err) = check_code(code, ErrorTask::Flush) {
+                Err(err)
+            } else {
+                Ok(())
+            }
         }
     }
 
@@ -372,7 +412,11 @@ impl Trajectory for TRRTrajectory {
                     // Reconstitute the CString so it is deallocated correctly
                     let _ = CString::from_raw(path_p);
 
-                    Error::check_code(code, num_atoms as u32, ErrorTask::ReadNumAtoms)
+                    if let Some(err) = check_code(code, ErrorTask::ReadNumAtoms) {
+                        Err(err)
+                    } else {
+                        Ok(num_atoms as u32)
+                    }
                 }
             })
             .clone()

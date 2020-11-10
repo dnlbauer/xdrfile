@@ -58,21 +58,6 @@ impl Error {
     pub fn is_eof(&self) -> bool {
         self.code().map_or(false, |e| e.is_eof())
     }
-
-    /// Convert an error code and output value from a C call to a Result
-    ///
-    /// `code` should be an integer return code returned from the C API. `value` should be the
-    /// function's output, which is generally either `()` or one of its arguments. If `code`
-    /// indicates the function returned successfully, the value is returned; otherwise, the
-    /// code is converted into the appropriate `Error`.
-    pub fn check_code<T>(code: impl Into<ErrorCode>, value: T, task: ErrorTask) -> Result<T, Self> {
-        let code: ErrorCode = code.into();
-        if let ErrorCode::ExdrOk = code {
-            Ok(value)
-        } else {
-            Err(Self::CApiError { code, task })
-        }
-    }
 }
 
 impl std::error::Error for Error {
@@ -82,6 +67,13 @@ impl std::error::Error for Error {
             Error::CouldNotCheckNAtoms(err) => Some(err.as_ref()),
             _ => None,
         }
+    }
+}
+
+impl From<(ErrorCode, ErrorTask)> for Error {
+    fn from(value: (ErrorCode, ErrorTask)) -> Self {
+        let (code, task) = value;
+        Self::CApiError { code, task }
     }
 }
 
