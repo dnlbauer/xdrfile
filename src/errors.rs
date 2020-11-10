@@ -7,16 +7,10 @@ use std::path::{Path, PathBuf};
 /// Error type for the xdrfile library
 pub struct Error {
     kind: ErrorKind,
-    task: Option<ErrorTask>,
     source: Option<Box<Error>>,
 }
 
 impl Error {
-    /// Get the task being attempted when the error was returned
-    pub fn task(&self) -> &Option<ErrorTask> {
-        &self.task
-    }
-
     /// Get the task being attempted when the error was returned
     pub fn kind(&self) -> &ErrorKind {
         &self.kind
@@ -24,8 +18,17 @@ impl Error {
 
     /// Get the error code returned by the C API, if any
     pub fn code(&self) -> Option<ErrorCode> {
-        if let ErrorKind::ErrorCode(code) = self.kind {
+        if let ErrorKind::CApiError { code, .. } = self.kind {
             Some(code)
+        } else {
+            None
+        }
+    }
+
+    /// Get the task being attempted when the C API returned an error, if any
+    pub fn task(&self) -> Option<ErrorTask> {
+        if let ErrorKind::CApiError { task, .. } = self.kind {
+            Some(task)
         } else {
             None
         }
@@ -33,34 +36,8 @@ impl Error {
 
     /// True if the error is an end of file error, false otherwise
     pub fn is_eof(&self) -> bool {
-        use ErrorKind::*;
-        match self.kind {
-            ErrorCode(code) => code.is_eof(),
-            _ => false,
-        }
-    }
-
-    /// Change the task of the error
-    ///
-    /// Unless the current task is `UnknownTask`, the current error will be
-    /// set as the source
-    pub fn with_task(self, task: ErrorTask) -> Self {
-        let kind;
-        let source;
-
-        if let None = self.task {
-            kind = self.kind;
-            source = None
-        } else {
-            kind = self.kind.clone();
-            source = Some(Box::new(self))
-        };
-
-        Self {
-            kind,
-            task: Some(task),
-            source,
-        }
+        self.code().map_or(false, |e| e.is_eof())
+            | self.source.as_ref().map_or(false, |e| e.is_eof())
     }
 
     /// Convert an error code and output value from a C call to a Result
@@ -75,8 +52,7 @@ impl Error {
             Ok(value)
         } else {
             Err(Self {
-                kind: ErrorKind::from(code),
-                task: Some(task),
+                kind: ErrorKind::CApiError { code, task },
                 source: None,
             })
         }
@@ -86,7 +62,6 @@ impl Error {
 impl<K: Into<ErrorKind>> From<K> for Error {
     fn from(kind: K) -> Self {
         Self {
-            task: None,
             kind: kind.into(),
             source: None,
         }
@@ -95,11 +70,7 @@ impl<K: Into<ErrorKind>> From<K> for Error {
 
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let Some(task) = self.task {
-            write!(f, "{task}: {kind}", task = task, kind = self.kind)
-        } else {
-            write!(f, "{}", self.kind)
-        }
+        self.kind.fmt(f)
     }
 }
 
@@ -117,35 +88,10 @@ impl std::error::Error for Error {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-/// The task being attempted if ErrorKind is ambiguous
-pub enum ErrorTask {
-    /// The number of atoms was being read from a file
-    ReadNumAtoms,
-    /// A frame was being read from a file
-    Read,
-    /// A frame was being written to a file
-    Write,
-    /// An file was being flushed to disk
-    Flush,
-}
-
-impl std::fmt::Display for ErrorTask {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        use ErrorTask::*;
-        match &self {
-            ReadNumAtoms => write!(f, "Failed to read atom number from trajectory"),
-            Read => write!(f, "Failed to read trajectory"),
-            Write => write!(f, "Failed to write trajectory"),
-            Flush => write!(f, "Failed to flush trajectory"),
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum ErrorKind {
     /// An error code from the C API
-    ErrorCode(ErrorCode),
+    CApiError { code: ErrorCode, task: ErrorTask },
     /// Passed in a frame of the wrong size
     WrongSizeFrame { expected: usize, found: usize },
     /// C API failed to open a file (No return code provided)
@@ -182,17 +128,16 @@ impl From<(&Frame, usize)> for ErrorKind {
     }
 }
 
-impl From<ErrorCode> for ErrorKind {
-    fn from(code: ErrorCode) -> Self {
-        ErrorKind::ErrorCode(code)
-    }
-}
-
 impl std::fmt::Display for ErrorKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use ErrorKind::*;
         match &self {
-            ErrorCode(code) => code.fmt(f),
+            CApiError { code, task } => write!(
+                f,
+                "Error while {task}: C API returned error code {code}",
+                task = task,
+                code = code
+            ),
             WrongSizeFrame { expected, found } => write!(
                 f,
                 "Expected frame of size {:?}, found {:?}",
@@ -203,6 +148,31 @@ impl std::fmt::Display for ErrorKind {
             }
             InvalidOsStr => write!(f, "CStr must be valid unicode on this platform"),
             NullInStr(_err) => write!(f, "CStr cannot include null bytes"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+/// The task being attempted when the C API returns an error
+pub enum ErrorTask {
+    /// The number of atoms was being read from a file
+    ReadNumAtoms,
+    /// A frame was being read from a file
+    Read,
+    /// A frame was being written to a file
+    Write,
+    /// An file was being flushed to disk
+    Flush,
+}
+
+impl std::fmt::Display for ErrorTask {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use ErrorTask::*;
+        match &self {
+            ReadNumAtoms => write!(f, "reading atom number from trajectory"),
+            Read => write!(f, "reading trajectory"),
+            Write => write!(f, "writing trajectory"),
+            Flush => write!(f, "flushing trajectory"),
         }
     }
 }
@@ -277,9 +247,9 @@ impl From<c_abi::xdrfile::BindgenTy1> for ErrorCode {
 impl std::fmt::Display for ErrorCode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if let Self::UnmatchedCode(i) = self {
-            write!(f, "C API returned error code {}", i)
+            write!(f, "{}", i)
         } else {
-            write!(f, "C API returned error code {:?}", self)
+            write!(f, "{:?}", self)
         }
     }
 }
@@ -293,38 +263,48 @@ mod tests {
 
     #[test]
     fn test_is_eof() {
-        use ErrorKind::ErrorCode as Code;
+        use ErrorKind::CApiError;
         let error = Error {
-            kind: Code(c_abi::xdrfile::exdrENDOFFILE.into()),
-            task: Some(ErrorTask::Read),
+            kind: CApiError {
+                code: c_abi::xdrfile::exdrENDOFFILE.into(),
+                task: ErrorTask::Read,
+            },
             source: None,
         };
         assert!(error.is_eof());
 
         let error = Error {
-            kind: Code(ErrorCode::ExdrEndOfFile),
-            task: Some(ErrorTask::ReadNumAtoms),
+            kind: CApiError {
+                code: ErrorCode::ExdrEndOfFile,
+                task: ErrorTask::Read,
+            },
             source: None,
         };
         assert!(error.is_eof());
 
         let error = Error {
-            kind: Code((c_abi::xdrfile::exdrENDOFFILE + 1).into()),
-            task: None,
+            kind: CApiError {
+                code: (c_abi::xdrfile::exdrENDOFFILE + 1).into(),
+                task: ErrorTask::Read,
+            },
             source: None,
         };
         assert!(!error.is_eof());
 
         let error = Error {
-            kind: Code(0.into()),
-            task: Some(ErrorTask::Write),
+            kind: CApiError {
+                code: 0.into(),
+                task: ErrorTask::Read,
+            },
             source: None,
         };
         assert!(!error.is_eof());
 
         let error = Error {
-            kind: Code(255.into()),
-            task: Some(ErrorTask::Flush),
+            kind: CApiError {
+                code: 255.into(),
+                task: ErrorTask::Read,
+            },
             source: None,
         };
         assert!(!error.is_eof());
@@ -334,7 +314,6 @@ mod tests {
                 path: PathBuf::from("not/a/file"),
                 mode: FileMode::Read,
             },
-            task: None,
             source: None,
         };
         assert!(!error.is_eof());

@@ -206,11 +206,9 @@ impl Trajectory for XTCTrajectory {
     fn read(&mut self, frame: &mut Frame) -> Result<()> {
         let mut step: i32 = 0;
 
-        let num_atoms = self
-            .get_num_atoms()
-            .map_err(|e| e.with_task(ErrorTask::Read))? as usize;
+        let num_atoms = self.get_num_atoms()? as usize;
         if num_atoms != frame.coords.len() {
-            return Err(Error::from((&*frame, num_atoms)).with_task(ErrorTask::Read));
+            return Err(Error::from((&*frame, num_atoms)));
         }
 
         unsafe {
@@ -309,11 +307,9 @@ impl Trajectory for TRRTrajectory {
         let mut step: i32 = 0;
         let mut lambda: f32 = 0.0;
 
-        let num_atoms = self
-            .get_num_atoms()
-            .map_err(|e| e.with_task(ErrorTask::Read))? as usize;
+        let num_atoms = self.get_num_atoms()? as usize;
         if num_atoms != frame.coords.len() {
-            return Err(Error::from((&*frame, num_atoms)).with_task(ErrorTask::Read));
+            return Err(Error::from((&*frame, num_atoms)));
         }
 
         unsafe {
@@ -504,7 +500,6 @@ mod tests {
 
         let result = xtc_traj.read(&mut frame);
         if let Err(e) = result {
-            assert_eq!(e.task(), &Some(ErrorTask::Read));
             assert!(if let ErrorKind::WrongSizeFrame { .. } = e.kind() {
                 true
             } else {
