@@ -1,12 +1,13 @@
 use crate::c_abi;
 use crate::FileMode;
+use crate::Frame;
 use std::path::{Path, PathBuf};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 /// The task being attempted when an error was returned
 pub enum ErrorTask {
     /// A file was being opened
-    OpenFile(PathBuf, FileMode),
+    OpenFile,
     /// The number of atoms was being read from a file
     ReadNumAtoms,
     /// A frame was being read from a file
@@ -16,13 +17,30 @@ pub enum ErrorTask {
     /// An file was being flushed to disk
     Flush,
     /// A path was being converted to a CString
-    ToCString(Option<std::ffi::NulError>),
+    ToCString,
+    /// Unknown task
+    UnknownTask,
+}
+
+impl std::fmt::Display for ErrorTask {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use ErrorTask::*;
+        match &self {
+            OpenFile => write!(f, "Failed to open file as trajectory"),
+            ReadNumAtoms => write!(f, "Failed to read atom number from trajectory"),
+            Read => write!(f, "Failed to read trajectory"),
+            Write => write!(f, "Failed to write trajectory"),
+            Flush => write!(f, "Failed to flush trajectory"),
+            ToCString => write!(f, "Failed to convert to CString"),
+            UnknownTask => write!(f, "Task failed"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 /// Error type for the xdrfile library
 pub struct Error {
-    code: ErrorCode,
+    kind: ErrorKind,
     task: ErrorTask,
     source: Option<Box<Error>>,
 }
@@ -33,126 +51,148 @@ impl Error {
         &self.task
     }
 
+    /// Get the task being attempted when the error was returned
+    pub fn kind(&self) -> &ErrorKind {
+        &self.kind
+    }
+
     /// Get the error code returned by the C API, if any
-    pub fn code(&self) -> &ErrorCode {
-        &self.code
+    pub fn code(&self) -> Option<ErrorCode> {
+        if let ErrorKind::ErrorCode(code) = self.kind {
+            Some(code)
+        } else {
+            None
+        }
     }
 
     /// True if the error is an end of file error, false otherwise
     pub fn is_eof(&self) -> bool {
-        self.code.is_eof()
-    }
-
-    /// Construct a new error during the ToCString task
-    pub(crate) fn from_convert() -> Self {
-        Self {
-            code: ErrorCode::NoCode,
-            task: ErrorTask::ToCString(None),
-            source: None,
+        use ErrorKind::*;
+        match self.kind {
+            ErrorCode(code) => code.is_eof(),
+            _ => false,
         }
     }
 
-    /// Construct a new error during the OpenFile task
-    pub(crate) fn from_open(path: impl AsRef<Path>, mode: FileMode) -> Self {
+    pub fn with_task(self, task: ErrorTask) -> Self {
         Self {
-            code: ErrorCode::NoCode,
-            task: ErrorTask::OpenFile(path.as_ref().into(), mode),
-            source: None,
-        }
-    }
-
-    /// Construct a new error during the ReadNumAtoms task from a C error code
-    pub(crate) fn from_read_num_atoms(code: impl Into<ErrorCode>) -> Self {
-        Self {
-            code: code.into(),
-            task: ErrorTask::ReadNumAtoms,
-            source: None,
-        }
-    }
-
-    /// Construct a new error during the Read task from a C error code
-    pub(crate) fn from_read(code: impl Into<ErrorCode>) -> Self {
-        Self {
-            code: code.into(),
-            task: ErrorTask::Read,
-            source: None,
-        }
-    }
-
-    /// Construct a new error during the Write task from a C error code
-    pub(crate) fn from_write(code: impl Into<ErrorCode>) -> Self {
-        Self {
-            code: code.into(),
-            task: ErrorTask::Write,
-            source: None,
-        }
-    }
-
-    /// Construct a new error during the Flush task from a C error code
-    pub(crate) fn from_flush(code: impl Into<ErrorCode>) -> Self {
-        Self {
-            code: code.into(),
-            task: ErrorTask::Flush,
-            source: None,
-        }
-    }
-
-    /// Construct a new error during the ReadNumAtoms task from a C error code
-    pub(crate) fn with_task(self, task: ErrorTask) -> Self {
-        Self {
-            code: self.code,
+            kind: self.kind.clone(),
             task,
             source: Some(Box::new(self)),
         }
     }
+
+    /// Convert an error code and output value from a C call to a Result
+    ///
+    /// `code` should be an integer return code returned from the C API. `value` should be the
+    /// function's output, which is generally either `()` or one of its arguments. If `code`
+    /// indicates the function returned successfully, the value is returned; otherwise, the
+    /// code is converted into the appropriate `Error`.
+    pub fn check_code<T>(code: impl Into<ErrorCode>, value: T, task: ErrorTask) -> Result<T, Self> {
+        let code: ErrorCode = code.into();
+        if let ErrorCode::ExdrOk = code {
+            Ok(value)
+        } else {
+            Err(Self {
+                kind: ErrorKind::from(code),
+                task,
+                source: None,
+            })
+        }
+    }
 }
 
-impl From<std::ffi::NulError> for Error {
-    fn from(err: std::ffi::NulError) -> Self {
+impl<K: Into<ErrorKind>> From<K> for Error {
+    fn from(kind: K) -> Self {
         Self {
-            code: ErrorCode::NoCode,
-            task: ErrorTask::ToCString(Some(err)),
+            task: ErrorTask::UnknownTask,
+            kind: kind.into(),
             source: None,
         }
+    }
+}
+
+impl From<std::ffi::NulError> for ErrorKind {
+    fn from(err: std::ffi::NulError) -> Self {
+        Self::NullInStr(err)
+    }
+}
+
+impl From<(&Path, FileMode)> for ErrorKind {
+    fn from(value: (&Path, FileMode)) -> Self {
+        let (path, mode) = value;
+        ErrorKind::CouldNotOpen {
+            path: path.to_owned(),
+            mode,
+        }
+    }
+}
+
+impl From<(&Frame, usize)> for ErrorKind {
+    fn from(value: (&Frame, usize)) -> Self {
+        let (frame, num_atoms) = value;
+        ErrorKind::WrongSizeFrame {
+            expected: num_atoms,
+            found: frame.coords.len(),
+        }
+    }
+}
+
+impl From<ErrorCode> for ErrorKind {
+    fn from(code: ErrorCode) -> Self {
+        ErrorKind::ErrorCode(code)
     }
 }
 
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        use ErrorTask::*;
-        match &self.task {
-            OpenFile(path, mode) => write!(
-                f,
-                "Failed to open file at {path:?} with mode {mode:?}",
-                path = path,
-                mode = mode
-            ),
-            ReadNumAtoms => write!(f, "Failed to read atom number from trajectory"),
-            Read => write!(f, "Failed to read trajectory"),
-            Write => write!(f, "Failed to write trajectory"),
-            Flush => write!(f, "Failed to flush trajectory"),
-            ToCString(None) => write!(
-                f,
-                "Path cannot be converted to a C string because it was invalid Unicode"
-            ),
-            ToCString(Some(_)) => write!(
-                f,
-                "Path cannot be converted to a C string because it has a null byte"
-            ),
-        }
+        write!(f, "{task}: {kind}", task = self.task, kind = self.kind)
     }
 }
 
 impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        if let Some(source) = &self.source {
-            Some(source.as_ref())
-        } else if self.code != ErrorCode::NoCode {
-            Some(&self.code)
-        } else if let ErrorTask::ToCString(Some(e)) = &self.task {
-            Some(e)
+        if let Some(err) = &self.source {
+            Some(err)
         } else {
-            None
+            use ErrorKind::*;
+            match &self.kind {
+                NullInStr(err) => Some(err),
+                _ => None,
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ErrorKind {
+    /// An error code from the C API
+    ErrorCode(ErrorCode),
+    /// Passed in a frame of the wrong size
+    WrongSizeFrame { expected: usize, found: usize },
+    /// C API failed to open a file (No return code provided)
+    CouldNotOpen { path: PathBuf, mode: FileMode },
+    /// &str could not be converted to &OsStr, probably because it is invalid unicode
+    InvalidOsStr,
+    /// &OsStr could not be converted to &CStr because it had a null byte
+    NullInStr(std::ffi::NulError),
+}
+
+impl std::fmt::Display for ErrorKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use ErrorKind::*;
+        match &self {
+            ErrorCode(code) => code.fmt(f),
+            WrongSizeFrame { expected, found } => write!(
+                f,
+                "Expected frame of size {:?}, found {:?}",
+                expected, found
+            ),
+            CouldNotOpen { path, mode } => {
+                write!(f, "Could not open file at {:?} in mode {:?}", path, mode)
+            }
+            InvalidOsStr => write!(f, "CStr must be valid unicode on this platform"),
+            NullInStr(_err) => write!(f, "CStr cannot include null bytes"),
         }
     }
 }
@@ -190,8 +230,6 @@ pub enum ErrorCode {
     ExdrNr,
     /// Something unexpected happened
     UnmatchedCode(c_abi::xdrfile::BindgenTy1),
-    /// C returned no code at all
-    NoCode,
 }
 
 impl ErrorCode {
@@ -200,21 +238,6 @@ impl ErrorCode {
         match self {
             Self::ExdrEndOfFile => true,
             _ => false,
-        }
-    }
-
-    /// Convert an error code and output value from a C call to a Result
-    ///
-    /// `code` should be an integer return code returned from the C API. `value` should be the
-    /// function's output, which is generally either `()` or one of its arguments. If `code`
-    /// indicates the function returned successfully, the value is returned; otherwise, the
-    /// code is converted into the appropriate `ErrorCode`.
-    pub fn check<T>(code: impl Into<Self>, value: T) -> std::result::Result<T, Self> {
-        let code = code.into();
-        if let Self::ExdrOk = code {
-            Ok(value)
-        } else {
-            Err(code)
         }
     }
 }
@@ -251,8 +274,6 @@ impl std::fmt::Display for ErrorCode {
     }
 }
 
-impl std::error::Error for ErrorCode {}
-
 /// `Result` type for errors in the `xdrfile` crate
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -262,44 +283,48 @@ mod tests {
 
     #[test]
     fn test_is_eof() {
+        use ErrorKind::ErrorCode as Code;
         let error = Error {
-            code: c_abi::xdrfile::exdrENDOFFILE.into(),
+            kind: Code(c_abi::xdrfile::exdrENDOFFILE.into()),
             task: ErrorTask::Read,
             source: None,
         };
         assert!(error.is_eof());
 
         let error = Error {
-            code: ErrorCode::ExdrEndOfFile,
-            task: ErrorTask::Read,
+            kind: Code(ErrorCode::ExdrEndOfFile),
+            task: ErrorTask::ReadNumAtoms,
             source: None,
         };
         assert!(error.is_eof());
 
         let error = Error {
-            code: (c_abi::xdrfile::exdrENDOFFILE + 1).into(),
+            kind: Code((c_abi::xdrfile::exdrENDOFFILE + 1).into()),
             task: ErrorTask::Read,
             source: None,
         };
         assert!(!error.is_eof());
 
         let error = Error {
-            code: 0.into(),
+            kind: Code(0.into()),
             task: ErrorTask::Write,
             source: None,
         };
         assert!(!error.is_eof());
 
         let error = Error {
-            code: 255.into(),
+            kind: Code(255.into()),
             task: ErrorTask::Flush,
             source: None,
         };
         assert!(!error.is_eof());
 
         let error = Error {
-            code: ErrorCode::NoCode,
-            task: ErrorTask::OpenFile(PathBuf::from("not/a/file"), FileMode::Read),
+            kind: ErrorKind::CouldNotOpen {
+                path: PathBuf::from("not/a/file"),
+                mode: FileMode::Read,
+            },
+            task: ErrorTask::OpenFile,
             source: None,
         };
         assert!(!error.is_eof());

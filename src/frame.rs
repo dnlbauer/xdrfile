@@ -1,7 +1,7 @@
 use std::fmt;
 
 /// A frame represents a single step in a trajectory.
-#[derive(Clone, PartialEq)]
+#[derive(Clone)]
 pub struct Frame {
     /// Number of atoms in the frame
     pub num_atoms: u32,
@@ -13,10 +13,10 @@ pub struct Frame {
     pub time: f32,
 
     /// 3x3 box vector
-    pub box_vector: [[f32; 3]; 3],
+    pub box_vector: [[f32; 3usize]; 3usize],
 
     /// 3D coordinates for N atoms where N is num_atoms
-    pub coords: Vec<[f32; 3]>,
+    pub coords: Vec<[f32; 3usize]>,
 }
 
 impl Default for Frame {
@@ -75,12 +75,6 @@ impl Frame {
     /// Length of the frame (number of atoms)
     pub fn len(self: &Frame) -> usize {
         self.num_atoms as usize
-    }
-
-    /// Resizes the Frame in-place so that num_atoms is equal to new_size.
-    pub fn resize(&mut self, new_size: u32) {
-        self.num_atoms = new_size;
-        self.coords.resize(new_size as usize, [0.0; 3]);
     }
 }
 

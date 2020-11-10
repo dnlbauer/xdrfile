@@ -101,8 +101,13 @@ impl FileMode {
 }
 
 fn path_to_cstring(path: impl AsRef<Path>) -> Result<CString> {
-    let s = path.as_ref().to_str().ok_or_else(Error::from_convert)?;
-    Ok(CString::new(s)?)
+    use ErrorKind::InvalidOsStr;
+    use ErrorTask::ToCString;
+    let s = path
+        .as_ref()
+        .to_str()
+        .ok_or_else(|| Error::from(InvalidOsStr).with_task(ToCString))?;
+    CString::new(s).map_err(|e| Error::from(e).with_task(ToCString))
 }
 
 /// A safe wrapper around the c implementation of an XDRFile
@@ -135,7 +140,7 @@ impl XDRFile {
                 })
             } else {
                 // Something went wrong. But the C api does not tell us what
-                Err(Error::from_open(path, filemode))
+                Err(Error::from((path, filemode)).with_task(ErrorTask::OpenFile))
             }
         }
     }
@@ -201,25 +206,29 @@ impl XTCTrajectory {
 impl Trajectory for XTCTrajectory {
     fn read(&mut self, frame: &mut Frame) -> Result<()> {
         let mut step: i32 = 0;
-        frame.resize(
-            self.get_num_atoms()
-                .map_err(|e| e.with_task(ErrorTask::Read))?,
-        );
+
+        let num_atoms = self
+            .get_num_atoms()
+            .map_err(|e| e.with_task(ErrorTask::Read))? as usize;
+        if num_atoms != frame.coords.len() {
+            return Err(Error::from((&*frame, num_atoms)).with_task(ErrorTask::Read));
+        }
+
         unsafe {
             // C lib requires an i32 to be passed, but step is exposed it as u32
             // (A step cannot be negative, can it?). So we need to create a step
             // variable to pass to read_xtc and cast it afterwards to u32
             let code = xdrfile_xtc::read_xtc(
                 self.handle.xdrfile,
-                frame.num_atoms as i32,
+                num_atoms as i32,
                 &mut step,
                 &mut frame.time,
                 &mut frame.box_vector,
-                frame.coords.as_ptr() as *mut [f32; 3],
+                frame.coords.as_mut_ptr(),
                 &mut self.precision.get(),
             ) as u32;
             frame.step = step as u32;
-            ErrorCode::check(code, ()).map_err(Error::from_read)
+            Error::check_code(code, (), ErrorTask::Read)
         }
     }
 
@@ -234,14 +243,14 @@ impl Trajectory for XTCTrajectory {
                 frame.coords[..].as_ptr() as *mut [f32; 3],
                 1000.0,
             ) as u32;
-            ErrorCode::check(code, ()).map_err(Error::from_write)
+            Error::check_code(code, (), ErrorTask::Write)
         }
     }
 
     fn flush(&mut self) -> Result<()> {
         unsafe {
             let code = xdr_seek::xdr_flush(self.handle.xdrfile) as u32;
-            ErrorCode::check(code, ()).map_err(Error::from_flush)
+            Error::check_code(code, (), ErrorTask::Flush)
         }
     }
 
@@ -258,7 +267,7 @@ impl Trajectory for XTCTrajectory {
                     // Reconstitute the CString so it is deallocated correctly
                     let _ = CString::from_raw(path_p);
 
-                    ErrorCode::check(code, num_atoms as u32).map_err(Error::from_read_num_atoms)
+                    Error::check_code(code, num_atoms as u32, ErrorTask::ReadNumAtoms)
                 }
             })
             .clone()
@@ -300,10 +309,14 @@ impl Trajectory for TRRTrajectory {
     fn read(&mut self, frame: &mut Frame) -> Result<()> {
         let mut step: i32 = 0;
         let mut lambda: f32 = 0.0;
-        frame.resize(
-            self.get_num_atoms()
-                .map_err(|e| e.with_task(ErrorTask::Read))?,
-        );
+
+        let num_atoms = self
+            .get_num_atoms()
+            .map_err(|e| e.with_task(ErrorTask::Read))? as usize;
+        if num_atoms != frame.coords.len() {
+            return Err(Error::from((&*frame, num_atoms)).with_task(ErrorTask::Read));
+        }
+
         unsafe {
             // C lib requires an i32 to be passed, but step is exposed it as u32
             // (A step cannot be negative, can it?). So we need to create a step
@@ -311,17 +324,17 @@ impl Trajectory for TRRTrajectory {
             // Similar for lambda.
             let code = xdrfile_trr::read_trr(
                 self.handle.xdrfile,
-                frame.num_atoms as i32,
+                num_atoms as i32,
                 &mut step,
                 &mut frame.time,
                 &mut lambda,
                 &mut frame.box_vector,
-                frame.coords.as_ptr() as *mut [f32; 3],
+                frame.coords.as_mut_ptr(),
                 std::ptr::null_mut(),
                 std::ptr::null_mut(),
             ) as u32;
             frame.step = step as u32;
-            ErrorCode::check(code, ()).map_err(Error::from_read)
+            Error::check_code(code, (), ErrorTask::Read)
         }
     }
 
@@ -338,14 +351,14 @@ impl Trajectory for TRRTrajectory {
                 std::ptr::null_mut(),
                 std::ptr::null_mut(),
             ) as u32;
-            ErrorCode::check(code, ()).map_err(Error::from_write)
+            Error::check_code(code, (), ErrorTask::Write)
         }
     }
 
     fn flush(&mut self) -> Result<()> {
         unsafe {
             let code = xdr_seek::xdr_flush(self.handle.xdrfile) as u32;
-            ErrorCode::check(code, ()).map_err(Error::from_flush)
+            Error::check_code(code, (), ErrorTask::Flush)
         }
     }
 
@@ -361,7 +374,7 @@ impl Trajectory for TRRTrajectory {
                     // Reconstitute the CString so it is deallocated correctly
                     let _ = CString::from_raw(path_p);
 
-                    ErrorCode::check(code, num_atoms as u32).map_err(Error::from_read_num_atoms)
+                    Error::check_code(code, num_atoms as u32, ErrorTask::ReadNumAtoms)
                 }
             })
             .clone()
@@ -456,10 +469,9 @@ mod tests {
 
     #[test]
     pub fn test_manual_loop() -> Result<(), Box<dyn std::error::Error>> {
-        let mut frame = Frame::new();
-
         let mut xtc_frames = Vec::new();
         let mut xtc_traj = XTCTrajectory::open_read("tests/1l2y.xtc")?;
+        let mut frame = Frame::with_capacity(xtc_traj.get_num_atoms()?);
 
         while let Ok(()) = xtc_traj.read(&mut frame) {
             xtc_frames.push(frame.clone());
@@ -487,26 +499,37 @@ mod tests {
     }
 
     #[test]
+    pub fn test_wrong_size_frame() -> Result<(), Box<dyn std::error::Error>> {
+        let mut xtc_traj = XTCTrajectory::open_read("tests/1l2y.xtc")?;
+        let mut frame = Frame::new();
+
+        let result = xtc_traj.read(&mut frame);
+        if let Err(e) = result {
+            assert_eq!(e.task(), &ErrorTask::Read);
+            assert!(if let ErrorKind::WrongSizeFrame { .. } = e.kind() {
+                true
+            } else {
+                false
+            });
+        } else {
+            panic!("A read with an incorrectly sized frame should not succeed")
+        }
+        Ok(())
+    }
+
+    #[test]
     fn test_path_to_cstring() -> Result<(), Box<dyn std::error::Error>> {
         let result_invalid = path_to_cstring(PathBuf::from("invalid/\0path"));
 
-        assert_eq!(
-            result_invalid,
-            CString::new("invalid/\0path").map_err(Error::from)
-        );
-        assert!(!result_invalid.is_ok());
-        if let Err(e) = result_invalid {
-            match e.task() {
-                ErrorTask::ToCString(_) => (),
-                _ => panic!("path_to_cstring's errortask should be ErrorTask::ToCString(_)"),
-            }
+        if let Err(err) = result_invalid {
+            assert!(err.task() == &ErrorTask::ToCString);
         } else {
-            panic!("path_to_cstring on a NULL-containing string should return an error");
+            panic!("path_to_cstring should return Err if there are null bytes");
         }
 
         let result_valid = path_to_cstring("valid/path");
-
         assert_eq!(result_valid, Ok(CString::new("valid/path")?));
+
         Ok(())
     }
 
@@ -516,12 +539,18 @@ mod tests {
 
         let path = Path::new(&file_name);
         if let Err(e) = XDRFile::open(file_name, FileMode::Read) {
-            match e.task() {
-                ErrorTask::OpenFile(err_path, err_mode) => {
-                    assert_eq!(path, err_path);
-                    assert_eq!(FileMode::Read, *err_mode)
-                }
-                _ => panic!("Wrong Error type"),
+            if let (
+                ErrorTask::OpenFile,
+                ErrorKind::CouldNotOpen {
+                    path: err_path,
+                    mode: err_mode,
+                },
+            ) = (e.task(), e.kind())
+            {
+                assert_eq!(path, err_path);
+                assert_eq!(FileMode::Read, *err_mode)
+            } else {
+                panic!("Wrong Error type")
             }
         }
     }
@@ -533,7 +562,7 @@ mod tests {
         if let Err(e) = trr.get_num_atoms() {
             match e.task() {
                 ErrorTask::ReadNumAtoms => {
-                    assert_eq!(ErrorCode::ExdrMagic, *e.code());
+                    assert_eq!(Some(ErrorCode::ExdrMagic), e.code());
                 }
                 _ => panic!("Wrong Error type"),
             }
@@ -549,7 +578,7 @@ mod tests {
         if let Err(e) = trr.read(&mut frame) {
             match e.task() {
                 ErrorTask::Read => {
-                    assert_eq!(ErrorCode::ExdrMagic, *e.code());
+                    assert_eq!(Some(ErrorCode::ExdrMagic), e.code());
                 }
                 _ => panic!("Wrong Error type"),
             }
