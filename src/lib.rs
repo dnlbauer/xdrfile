@@ -662,4 +662,15 @@ mod tests {
 
         Ok(())
     }
+
+    #[test]
+    fn test_check_code() {
+        let code: ErrorCode = 0.into();
+        assert!(!check_code(code, ErrorTask::Read).is_some());
+
+        for i in vec![1, 10, 100, 1000] {
+            let code: ErrorCode = i.into();
+            assert!(check_code(code, ErrorTask::Read).is_some());
+        }
+    }
 }

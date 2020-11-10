@@ -32,7 +32,6 @@ pub enum Error {
 impl Error {
     /// Get the error code returned by the C API, if any
     pub fn code(&self) -> Option<ErrorCode> {
-        // use std::error::Error as _;
         if let Error::CApiError { code, .. } = self {
             Some(*code)
         } else if let Some(e) = self.source() {
@@ -44,7 +43,6 @@ impl Error {
 
     /// Get the task being attempted when the C API returned an error, if any
     pub fn task(&self) -> Option<ErrorTask> {
-        // use std::error::Error as _;
         if let Error::CApiError { task, .. } = self {
             Some(*task)
         } else if let Some(e) = self.source() {
@@ -236,6 +234,8 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::ffi::NulError;
+    use std::ffi::CString;
 
     #[test]
     fn test_is_eof() {
@@ -275,5 +275,31 @@ mod tests {
             mode: FileMode::Read,
         };
         assert!(!error.is_eof());
+    }
+
+    #[test]
+    fn test_from_correct_type() {
+        let nul_err: NulError = CString::new(b"foo\0".to_vec()).unwrap_err();
+        let nul_err2: NulError = CString::new(b"foo\0".to_vec()).unwrap_err();
+        let err = Error::from(nul_err);
+        let expected = Error::NullInStr(nul_err2);
+        assert_eq!(expected, err);
+
+        let code = 3.into();
+        let task = ErrorTask::Read;
+        let expected = Error::CApiError { code, task };
+        let err = Error::from((code, task));
+        assert_eq!(expected, err);
+
+        let path = Path::new(".");
+        let mode = FileMode::Read;
+        let expected = Error::CouldNotOpen{path: path.to_path_buf(), mode: mode.to_owned()};
+        let err = Error::from((path, mode));
+        assert_eq!(expected, err);
+
+        let frame = Frame::with_capacity(0);
+        let expected = Error::WrongSizeFrame{expected: 10, found: 0};
+        let err = Error::from((&frame, 10));
+        assert_eq!(expected, err);
     }
 }
