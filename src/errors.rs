@@ -43,8 +43,11 @@ impl Error {
 
     /// Get the task being attempted when the C API returned an error, if any
     pub fn task(&self) -> Option<ErrorTask> {
+        use std::error::Error as _;
         if let Error::CApiError { task, .. } = self {
             Some(*task)
+        } else if let Some(e) = self.source() {
+            e.downcast_ref::<Self>().and_then(Self::task)
         } else {
             None
         }
