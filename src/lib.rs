@@ -120,7 +120,7 @@ fn to_i32(value: usize, task: ErrorTask) -> Result<i32> {
 /// Convert an error code from a C call to an Error
 ///
 /// `code` should be an integer return code returned from the C API.
-/// If `code` indicates the function returned successfully, Nothing is returned;
+/// If `code` indicates the function returned successfully, None is returned;
 /// otherwise, the code is converted into the appropriate `Error`.
 pub fn check_code(code: impl Into<ErrorCode>, task: ErrorTask) -> Option<Error> {
     let code: ErrorCode = code.into();
@@ -797,5 +797,23 @@ mod tests {
             let code: ErrorCode = i.into();
             assert!(check_code(code, ErrorTask::Read).is_some());
         }
+    }
+
+    #[test]
+    fn test_to_i32() -> Result<()> {
+        assert_eq!(24234_i32, to_i32(24234_usize, ErrorTask::Read)?);
+
+        let try_from_int_err = match u8::try_from(-1) {
+            Err(e) => e,
+            _ => panic!("Conversion from -1 to u8 succeeded"),
+        };
+        let expected = Error::NumericCastFailed {
+            source: try_from_int_err,
+            task: ErrorTask::Write,
+            value: 3_294_967_295_usize,
+        };
+        assert_eq!(Err(expected), to_i32(3_294_967_295_usize, ErrorTask::Write));
+
+        Ok(())
     }
 }
