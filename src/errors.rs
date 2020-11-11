@@ -1,6 +1,7 @@
 use crate::c_abi;
 use crate::FileMode;
 use crate::Frame;
+use std::convert::TryInto;
 use std::error::Error as StdError;
 use std::path::{Path, PathBuf};
 
@@ -27,6 +28,14 @@ pub enum Error {
     /// A path could not be converted to &CStr because it had a null byte
     NullInStr(std::ffi::NulError),
     CouldNotCheckNAtoms(Box<Error>),
+    /// Step was out of range for usize on this platform
+    StepSizeOutOfRange(i32),
+    /// A numeric cast from `value` failed during `task`
+    NumericCastFailed {
+        source: std::num::TryFromIntError,
+        task: ErrorTask,
+        value: usize,
+    },
 }
 
 impl Error {
@@ -64,6 +73,7 @@ impl std::error::Error for Error {
         match &self {
             NullInStr(err) => Some(err),
             CouldNotCheckNAtoms(err) => Some(err.as_ref()),
+            NumericCastFailed { source, .. } => Some(source),
             _ => None,
         }
     }
@@ -105,7 +115,7 @@ impl From<(&Frame, usize)> for Error {
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use Error::*;
-        match &self {
+        match self {
             CApiError { code, task } => write!(
                 f,
                 "Error while {task}: C API returned error code {code}",
@@ -122,10 +132,16 @@ impl std::fmt::Display for Error {
             }
             InvalidOsStr => write!(f, "Paths must be valid unicode on this platform"),
             NullInStr(_err) => write!(f, "Paths cannot include null bytes"),
-            CouldNotCheckNAtoms(_err) => write!(
+            CouldNotCheckNAtoms(_err) => {
+                write!(f, "Failed to read number of atoms in trajectory file")
+            }
+            StepSizeOutOfRange(n) => write!(f, "Step {} does not fit in usize on this platform", n),
+            NumericCastFailed { value, task, .. } => write!(
                 f,
-                "Failed to read number of atoms in trajectory file"
-            )
+                "Numeric cast from {value} failed while {task}",
+                value = value,
+                task = task
+            ),
         }
     }
 }
@@ -200,9 +216,13 @@ impl ErrorCode {
     }
 }
 
-impl From<c_abi::xdrfile::BindgenTy1> for ErrorCode {
-    fn from(code: c_abi::xdrfile::BindgenTy1) -> Self {
-        match code {
+impl<T> From<T> for ErrorCode
+where
+    T: TryInto<c_abi::xdrfile::BindgenTy1>,
+    <T as TryInto<c_abi::xdrfile::BindgenTy1>>::Error: std::fmt::Debug,
+{
+    fn from(code: T) -> Self {
+        match code.try_into().expect("C API return code was out of range") {
             c_abi::xdrfile::exdrOK => Self::ExdrOk,
             c_abi::xdrfile::exdrHEADER => Self::ExdrHeader,
             c_abi::xdrfile::exdrSTRING => Self::ExdrString,

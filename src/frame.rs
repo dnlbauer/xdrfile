@@ -28,9 +28,7 @@ impl Default for Frame {
 impl Frame {
     /// Creates an empty frame with a capacity of 0
     pub fn new() -> Frame {
-        Frame {
-            ..Default::default()
-        }
+        Default::default()
     }
 
     /// Creates a frame with the given capacity
@@ -55,6 +53,11 @@ impl Frame {
 
     /// Length of the frame (number of atoms)
     pub fn len(self: &Frame) -> usize {
+        self.num_atoms()
+    }
+
+    /// The number of atoms in the frame
+    pub fn num_atoms(self: &Frame) -> usize {
         self.coords.len()
     }
 

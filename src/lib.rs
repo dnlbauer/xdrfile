@@ -77,6 +77,7 @@ use c_abi::xdrfile_xtc;
 
 use lazy_init::Lazy;
 use std::cell::Cell;
+use std::convert::{TryFrom, TryInto};
 use std::ffi::CString;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -106,6 +107,14 @@ impl FileMode {
 fn path_to_cstring(path: impl AsRef<Path>) -> Result<CString> {
     let s = path.as_ref().to_str().ok_or(Error::InvalidOsStr)?;
     Ok(CString::new(s)?)
+}
+
+fn to_i32(value: usize, task: ErrorTask) -> Result<i32> {
+    value.try_into().map_err(|e| Error::NumericCastFailed {
+        source: e,
+        value,
+        task,
+    })
 }
 
 /// Convert an error code from a C call to an Error
@@ -250,7 +259,7 @@ impl Trajectory for XTCTrajectory {
             .map_err(|e| Error::CouldNotCheckNAtoms(Box::new(e)))?;
         if num_atoms != frame.coords.len() {
             Err((&*frame, num_atoms))?;
-        }
+        };
 
         unsafe {
             // C lib requires an i32 to be passed, but step is exposed it as u32
@@ -258,19 +267,18 @@ impl Trajectory for XTCTrajectory {
             // variable to pass to read_xtc and cast it afterwards to u32
             let code = xdrfile_xtc::read_xtc(
                 self.handle.xdrfile,
-                num_atoms as i32,
+                to_i32(num_atoms, ErrorTask::Read)?,
                 &mut step,
                 &mut frame.time,
                 &mut frame.box_vector,
                 frame.coords.as_mut_ptr(),
                 &mut self.precision.get(),
-            ) as u32;
-            frame.step = step as usize;
+            );
             if let Some(err) = check_code(code, ErrorTask::Read) {
-                Err(err)
-            } else {
-                Ok(())
+                return Err(err);
             }
+            frame.step = usize::try_from(step).map_err(|_| Error::StepSizeOutOfRange(step))?;
+            Ok(())
         }
     }
 
@@ -278,13 +286,13 @@ impl Trajectory for XTCTrajectory {
         unsafe {
             let code = xdrfile_xtc::write_xtc(
                 self.handle.xdrfile,
-                frame.len() as i32,
-                frame.step as i32,
+                to_i32(frame.len(), ErrorTask::Write)?,
+                to_i32(frame.step, ErrorTask::Write)?,
                 frame.time,
                 frame.box_vector.as_ptr() as *mut [[f32; 3]; 3],
                 frame.coords[..].as_ptr() as *mut [f32; 3],
                 1000.0,
-            ) as u32;
+            );
             if let Some(err) = check_code(code, ErrorTask::Write) {
                 Err(err)
             } else {
@@ -295,7 +303,7 @@ impl Trajectory for XTCTrajectory {
 
     fn flush(&mut self) -> Result<()> {
         unsafe {
-            let code = xdr_seek::xdr_flush(self.handle.xdrfile) as u32;
+            let code = xdr_seek::xdr_flush(self.handle.xdrfile);
             if let Some(err) = check_code(code, ErrorTask::Read) {
                 Err(err)
             } else {
@@ -312,15 +320,15 @@ impl Trajectory for XTCTrajectory {
                 unsafe {
                     let path = path_to_cstring(&self.handle.path)?;
                     let path_p = path.into_raw();
-                    let code =
-                        xdrfile_xtc::read_xtc_natoms(path_p, &mut num_atoms as *const i32) as u32;
+                    let code = xdrfile_xtc::read_xtc_natoms(path_p, &mut num_atoms as *const i32);
                     // Reconstitute the CString so it is deallocated correctly
                     let _ = CString::from_raw(path_p);
 
                     if let Some(err) = check_code(code, ErrorTask::ReadNumAtoms) {
                         Err(err)
                     } else {
-                        Ok(num_atoms as usize)
+                        Ok(usize::try_from(num_atoms)
+                            .expect("Number of atoms in file does not fit in usize"))
                     }
                 }
             })
@@ -391,7 +399,7 @@ impl Trajectory for TRRTrajectory {
             // Similar for lambda.
             let code = xdrfile_trr::read_trr(
                 self.handle.xdrfile,
-                num_atoms as i32,
+                to_i32(num_atoms, ErrorTask::Read)?,
                 &mut step,
                 &mut frame.time,
                 &mut lambda,
@@ -399,14 +407,12 @@ impl Trajectory for TRRTrajectory {
                 frame.coords.as_mut_ptr(),
                 std::ptr::null_mut(),
                 std::ptr::null_mut(),
-            ) as u32;
-
-            frame.step = step as usize;
+            );
             if let Some(err) = check_code(code, ErrorTask::Read) {
-                Err(err)
-            } else {
-                Ok(())
+                return Err(err);
             }
+            frame.step = usize::try_from(step).map_err(|_| Error::StepSizeOutOfRange(step))?;
+            Ok(())
         }
     }
 
@@ -414,15 +420,15 @@ impl Trajectory for TRRTrajectory {
         unsafe {
             let code = xdrfile_trr::write_trr(
                 self.handle.xdrfile,
-                frame.len() as i32,
-                frame.step as i32,
+                to_i32(frame.len(), ErrorTask::Write)?,
+                to_i32(frame.step, ErrorTask::Write)?,
                 frame.time,
                 0.0,
                 frame.box_vector.as_ptr() as *mut [[f32; 3]; 3],
                 frame.coords[..].as_ptr() as *mut [f32; 3],
                 std::ptr::null_mut(),
                 std::ptr::null_mut(),
-            ) as u32;
+            );
             if let Some(err) = check_code(code, ErrorTask::Write) {
                 Err(err)
             } else {
@@ -433,7 +439,7 @@ impl Trajectory for TRRTrajectory {
 
     fn flush(&mut self) -> Result<()> {
         unsafe {
-            let code = xdr_seek::xdr_flush(self.handle.xdrfile) as u32;
+            let code = xdr_seek::xdr_flush(self.handle.xdrfile);
             if let Some(err) = check_code(code, ErrorTask::Flush) {
                 Err(err)
             } else {
@@ -449,15 +455,15 @@ impl Trajectory for TRRTrajectory {
                 unsafe {
                     let path = path_to_cstring(&self.handle.path)?;
                     let path_p = path.into_raw();
-                    let code =
-                        xdrfile_trr::read_trr_natoms(path_p, &mut num_atoms as *const i32) as u32;
+                    let code = xdrfile_trr::read_trr_natoms(path_p, &mut num_atoms as *const i32);
                     // Reconstitute the CString so it is deallocated correctly
                     let _ = CString::from_raw(path_p);
 
                     if let Some(err) = check_code(code, ErrorTask::ReadNumAtoms) {
                         Err(err)
                     } else {
-                        Ok(num_atoms as usize)
+                        Ok(usize::try_from(num_atoms)
+                            .expect("Number of atoms in file does not fit in usize"))
                     }
                 }
             })
@@ -530,7 +536,7 @@ mod tests {
         let tempfile = NamedTempFile::new().expect("Could not create temporary file");
         let tmp_path = tempfile.path();
 
-        let natoms: u32 = 2;
+        let natoms = 2;
         let frame = Frame {
             step: 5,
             time: 2.0,
@@ -545,7 +551,7 @@ mod tests {
         }
         f.flush()?;
 
-        let mut new_frame = Frame::with_len(natoms as usize);
+        let mut new_frame = Frame::with_len(natoms);
         let mut f = TRRTrajectory::open_read(tmp_path)?;
         // let num_atoms = f.get_num_atoms()?;
         // assert_eq!(num_atoms, natoms);
@@ -744,7 +750,7 @@ mod tests {
         let tempfile = NamedTempFile::new()?;
         let tmp_path = tempfile.path();
 
-        let natoms: u32 = 2;
+        let natoms = 2;
         let frame = Frame {
             step: 5,
             time: 2.0,
@@ -755,7 +761,7 @@ mod tests {
         f.write(&frame)?;
         f.flush()?;
 
-        let mut new_frame = Frame::with_len(natoms as usize);
+        let mut new_frame = Frame::with_len(natoms);
         let mut f = XTCTrajectory::open_read(tmp_path)?;
 
         f.read(&mut new_frame)?;
