@@ -1,8 +1,8 @@
 use crate::c_abi;
 use crate::FileMode;
 use crate::Frame;
-use std::path::{Path, PathBuf};
 use std::error::Error as StdError;
+use std::path::{Path, PathBuf};
 
 /// Error type for the xdrfile library
 #[derive(Debug, Clone, PartialEq)]
@@ -26,7 +26,8 @@ pub enum Error {
     InvalidOsStr,
     /// A path could not be converted to &CStr because it had a null byte
     NullInStr(std::ffi::NulError),
-    CouldNotCheckNAtoms(Box<Error>),
+    CheckNAtomsDuringRead(Box<Error>),
+    CheckNAtomsDuringIter(Box<Error>),
 }
 
 impl Error {
@@ -60,9 +61,10 @@ impl Error {
 
 impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        use Error::*;
         match &self {
-            Error::NullInStr(err) => Some(err),
-            Error::CouldNotCheckNAtoms(err) => Some(err.as_ref()),
+            NullInStr(err) => Some(err),
+            CheckNAtomsDuringRead(err) | CheckNAtomsDuringIter(err) => Some(err.as_ref()),
             _ => None,
         }
     }
@@ -121,9 +123,13 @@ impl std::fmt::Display for Error {
             }
             InvalidOsStr => write!(f, "Paths must be valid unicode on this platform"),
             NullInStr(_err) => write!(f, "Paths cannot include null bytes"),
-            CouldNotCheckNAtoms(_err) => write!(
+            CheckNAtomsDuringRead(_err) => write!(
                 f,
                 "Failed to check number of atoms in trajectory while reading a frame"
+            ),
+            CheckNAtomsDuringIter(_err) => write!(
+                f,
+                "Failed to check number of atoms in trajectory while creating iterator"
             ),
         }
     }
@@ -234,8 +240,8 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::ffi::NulError;
     use std::ffi::CString;
+    use std::ffi::NulError;
 
     #[test]
     fn test_is_eof() {
@@ -293,12 +299,18 @@ mod tests {
 
         let path = Path::new(".");
         let mode = FileMode::Read;
-        let expected = Error::CouldNotOpen{path: path.to_path_buf(), mode: mode.to_owned()};
+        let expected = Error::CouldNotOpen {
+            path: path.to_path_buf(),
+            mode: mode.to_owned(),
+        };
         let err = Error::from((path, mode));
         assert_eq!(expected, err);
 
         let frame = Frame::with_capacity(0);
-        let expected = Error::WrongSizeFrame{expected: 10, found: 0};
+        let expected = Error::WrongSizeFrame {
+            expected: 10,
+            found: 0,
+        };
         let err = Error::from((&frame, 10));
         assert_eq!(expected, err);
     }

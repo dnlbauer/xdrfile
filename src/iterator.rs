@@ -45,24 +45,13 @@ pub struct TrajectoryIterator<T> {
     num_atoms: Result<u32>,
 }
 
-impl<T> Iterator for TrajectoryIterator<T>
-where
-    T: Trajectory,
-{
-    type Item = Result<Rc<Frame>>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.has_error {
-            return None;
-        }
-
+impl<T: Trajectory> TrajectoryIterator<T> {
+    /// Inner function for `next()`  to seperate error handling from iteration logic
+    fn next_inner(&mut self) -> <Self as Iterator>::Item {
         // If we couldn't read the number of frames when we called into_iter, return that error now
         let num_atoms = match &self.num_atoms {
             &Ok(n) => n,
-            Err(e) => {
-                self.has_error = true;
-                return Some(Err(e.clone()));
-            }
+            Err(e) => Err(Error::CheckNAtomsDuringIter(Box::new(e.clone())))?,
         };
 
         // Reuse old frame
@@ -75,8 +64,24 @@ where
             }
         };
 
-        match self.trajectory.read(item) {
-            Ok(()) => Some(Ok(Rc::clone(&self.item))),
+        self.trajectory.read(item)?;
+        Ok(Rc::clone(&self.item))
+    }
+}
+
+impl<T> Iterator for TrajectoryIterator<T>
+where
+    T: Trajectory,
+{
+    type Item = Result<Rc<Frame>>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.has_error {
+            return None;
+        }
+
+        match self.next_inner() {
+            Ok(item) => Some(Ok(item)),
             Err(e) if e.is_eof() => None,
             Err(e) => {
                 self.has_error = true;
