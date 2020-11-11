@@ -175,13 +175,12 @@ impl io::Seek for XDRFile {
             End(i) => (2, i),
         };
         unsafe {
-            let code = xdr_seek::xdr_seek(self.xdrfile, pos, whence);
-            if code as u32 != xdrfile::exdrOK {
-                return Err(io::Error::new(io::ErrorKind::Other, "Seek failed"));
+            let code = xdr_seek::xdr_seek(self.xdrfile, pos, whence) as u32;
+            match check_code(code, ErrorTask::Seek) {
+                None => Ok(self.tell()),
+                Some(err) => Err(io::Error::new(io::ErrorKind::Other, err)),
             }
-        };
-
-        Ok(self.tell())
+        }
     }
 }
 
@@ -329,6 +328,19 @@ impl Trajectory for XTCTrajectory {
     }
 }
 
+impl XTCTrajectory {
+    /// Get the current position in the file
+    pub fn tell(&self) -> u64 {
+        self.handle.tell()
+    }
+}
+
+impl io::Seek for XTCTrajectory {
+    fn seek(&mut self, pos: io::SeekFrom) -> io::Result<u64> {
+        self.handle.seek(pos)
+    }
+}
+
 /// Read/Write TRR Trajectories
 pub struct TRRTrajectory {
     handle: XDRFile,
@@ -449,6 +461,19 @@ impl Trajectory for TRRTrajectory {
                 }
             })
             .clone()
+    }
+}
+
+impl TRRTrajectory {
+    /// Get the current position in the file
+    pub fn tell(&self) -> u64 {
+        self.handle.tell()
+    }
+}
+
+impl io::Seek for TRRTrajectory {
+    fn seek(&mut self, pos: io::SeekFrom) -> io::Result<u64> {
+        self.handle.seek(pos)
     }
 }
 
@@ -617,17 +642,17 @@ mod tests {
             coords: vec![[0.0, 0.0, 0.0], [0.5, 0.5, 0.5]],
         };
         let mut f = TRRTrajectory::open_write(tmp_path)?;
-        assert_eq!(f.handle.tell(), 0);
+        assert_eq!(f.tell(), 0);
         f.write(&frame)?;
-        assert_eq!(f.handle.tell(), 144);
+        assert_eq!(f.tell(), 144);
         f.flush()?;
 
         let mut new_frame = Frame::with_capacity(natoms);
         let mut f = TRRTrajectory::open_read(tmp_path)?;
-        assert_eq!(f.handle.tell(), 0);
+        assert_eq!(f.tell(), 0);
 
         f.read(&mut new_frame)?;
-        assert_eq!(f.handle.tell(), 144);
+        assert_eq!(f.tell(), 144);
 
         Ok(())
     }
@@ -647,21 +672,21 @@ mod tests {
         };
         let mut f = TRRTrajectory::open_write(tmp_path)?;
         f.write(&frame)?;
-        let after_first_frame = f.handle.tell();
+        let after_first_frame = f.tell();
         frame.step += 1;
         frame.time += 10.0;
         f.write(&frame)?;
-        let after_second_frame = f.handle.tell();
+        let after_second_frame = f.tell();
         f.flush()?;
 
         let mut new_frame = Frame::with_capacity(natoms);
         let mut f = TRRTrajectory::open_read(tmp_path)?;
         use std::io::Seek as _;
-        let pos = f.handle.seek(std::io::SeekFrom::Current(144))?;
+        let pos = f.seek(std::io::SeekFrom::Current(144))?;
         assert_eq!(pos, after_first_frame);
 
         f.read(&mut new_frame)?;
-        assert_eq!(f.handle.tell(), after_second_frame);
+        assert_eq!(f.tell(), after_second_frame);
 
         assert_eq!(new_frame.num_atoms, frame.num_atoms);
         assert_eq!(new_frame.step, frame.step);
