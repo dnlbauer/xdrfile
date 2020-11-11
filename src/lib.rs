@@ -102,7 +102,7 @@ impl FileMode {
 
 fn path_to_cstring(path: impl AsRef<Path>) -> Result<CString> {
     let s = path.as_ref().to_str().ok_or(Error::InvalidOsStr)?;
-    CString::new(s).map_err(Error::from)
+    Ok(CString::new(s)?)
 }
 
 /// Convert an error code from a C call to an Error
@@ -118,7 +118,6 @@ pub fn check_code(code: impl Into<ErrorCode>, task: ErrorTask) -> Option<Error> 
         Some(Error::from((code, task)))
     }
 }
-
 
 /// A safe wrapper around the c implementation of an XDRFile
 struct XDRFile {
@@ -150,7 +149,7 @@ impl XDRFile {
                 })
             } else {
                 // Something went wrong. But the C api does not tell us what
-                Err(Error::from((path, filemode)))
+                Err((path, filemode))?
             }
         }
     }
@@ -221,7 +220,7 @@ impl Trajectory for XTCTrajectory {
             .get_num_atoms()
             .map_err(|e| Error::CouldNotCheckNAtoms(Box::new(e)))? as usize;
         if num_atoms != frame.coords.len() {
-            return Err(Error::from((&*frame, num_atoms)));
+            Err((&*frame, num_atoms))?;
         }
 
         unsafe {
@@ -340,7 +339,7 @@ impl Trajectory for TRRTrajectory {
             .get_num_atoms()
             .map_err(|e| Error::CouldNotCheckNAtoms(Box::new(e)))? as usize;
         if num_atoms != frame.coords.len() {
-            return Err(Error::from((&*frame, num_atoms)));
+            Err((&*frame, num_atoms))?;
         }
 
         unsafe {

@@ -1,20 +1,26 @@
 use crate::*;
 use std::rc::Rc;
 
+fn into_iter_inner<T: Trajectory>(mut traj: T) -> TrajectoryIterator<T> {
+    let num_atoms = traj.get_num_atoms();
+    let frame = match &num_atoms {
+        Ok(num_atoms) => Frame::with_capacity(*num_atoms),
+        Err(_) => Frame::new(),
+    };
+    TrajectoryIterator {
+        trajectory: traj,
+        item: Rc::new(frame),
+        has_error: false,
+        num_atoms,
+    }
+}
+
 impl IntoIterator for XTCTrajectory {
     type Item = Result<Rc<Frame>>;
     type IntoIter = TrajectoryIterator<XTCTrajectory>;
 
-    fn into_iter(mut self) -> Self::IntoIter {
-        let frame = match self.get_num_atoms() {
-            Ok(num_atoms) => Frame::with_capacity(num_atoms),
-            Err(_) => Frame::new(),
-        };
-        TrajectoryIterator {
-            trajectory: self,
-            item: Rc::new(frame),
-            has_error: false,
-        }
+    fn into_iter(self) -> Self::IntoIter {
+        into_iter_inner(self)
     }
 }
 
@@ -22,16 +28,8 @@ impl IntoIterator for TRRTrajectory {
     type Item = Result<Rc<Frame>>;
     type IntoIter = TrajectoryIterator<TRRTrajectory>;
 
-    fn into_iter(mut self) -> Self::IntoIter {
-        let frame = match self.get_num_atoms() {
-            Ok(num_atoms) => Frame::with_capacity(num_atoms),
-            Err(_) => Frame::new(),
-        };
-        TrajectoryIterator {
-            trajectory: self,
-            item: Rc::new(frame),
-            has_error: false,
-        }
+    fn into_iter(self) -> Self::IntoIter {
+        into_iter_inner(self)
     }
 }
 
@@ -44,6 +42,7 @@ pub struct TrajectoryIterator<T> {
     trajectory: T,
     item: Rc<Frame>,
     has_error: bool,
+    num_atoms: Result<u32>,
 }
 
 impl<T> Iterator for TrajectoryIterator<T>
@@ -53,19 +52,29 @@ where
     type Item = Result<Rc<Frame>>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        // Reuse old frame
         if self.has_error {
             return None;
         }
 
+        // If we couldn't read the number of frames when we called into_iter, return that error now
+        let num_atoms = match &self.num_atoms {
+            &Ok(n) => n,
+            Err(e) => {
+                self.has_error = true;
+                return Some(Err(e.clone()));
+            }
+        };
+
+        // Reuse old frame
         let item: &mut Frame = match Rc::get_mut(&mut self.item) {
             Some(item) => item,
             None => {
                 // caller kept frame. Create new one
-                self.item = Rc::new(Frame::with_capacity(self.item.num_atoms));
+                self.item = Rc::new(Frame::with_capacity(num_atoms));
                 Rc::get_mut(&mut self.item).expect("Could not get mutable access to new Rc")
             }
         };
+
         match self.trajectory.read(item) {
             Ok(()) => Some(Ok(Rc::clone(&self.item))),
             Err(e) if e.is_eof() => None,
