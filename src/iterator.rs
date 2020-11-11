@@ -11,7 +11,6 @@ fn into_iter_inner<T: Trajectory>(mut traj: T) -> TrajectoryIterator<T> {
         trajectory: traj,
         item: Rc::new(frame),
         has_error: false,
-        num_atoms,
     }
 }
 
@@ -42,14 +41,14 @@ pub struct TrajectoryIterator<T> {
     trajectory: T,
     item: Rc<Frame>,
     has_error: bool,
-    num_atoms: Result<u32>,
 }
 
 impl<T: Trajectory> TrajectoryIterator<T> {
     /// Inner function for `next()`  to seperate error handling from iteration logic
     fn next_inner(&mut self) -> <Self as Iterator>::Item {
         // If we couldn't read the number of frames when we called into_iter, return that error now
-        let num_atoms = match &self.num_atoms {
+        // It's OK to do this every frame because the result is cached by Trajectory
+        let num_atoms = match &self.trajectory.get_num_atoms() {
             &Ok(n) => n,
             Err(e) => Err(Error::CheckNAtomsDuringIter(Box::new(e.clone())))?,
         };
