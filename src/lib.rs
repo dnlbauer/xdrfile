@@ -218,7 +218,7 @@ impl Trajectory for XTCTrajectory {
 
         let num_atoms =
             self.get_num_atoms()
-                .map_err(|e| Error::CheckNAtomsDuringRead(Box::new(e)))? as usize;
+                .map_err(|e| Error::CouldNotCheckNAtoms(Box::new(e)))? as usize;
         if num_atoms != frame.coords.len() {
             Err((&*frame, num_atoms))?;
         }
@@ -337,7 +337,7 @@ impl Trajectory for TRRTrajectory {
 
         let num_atoms =
             self.get_num_atoms()
-                .map_err(|e| Error::CheckNAtomsDuringRead(Box::new(e)))? as usize;
+                .map_err(|e| Error::CouldNotCheckNAtoms(Box::new(e)))? as usize;
         if num_atoms != frame.coords.len() {
             Err((&*frame, num_atoms))?;
         }

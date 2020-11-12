@@ -26,8 +26,7 @@ pub enum Error {
     InvalidOsStr,
     /// A path could not be converted to &CStr because it had a null byte
     NullInStr(std::ffi::NulError),
-    CheckNAtomsDuringRead(Box<Error>),
-    CheckNAtomsDuringIter(Box<Error>),
+    CouldNotCheckNAtoms(Box<Error>),
 }
 
 impl Error {
@@ -64,7 +63,7 @@ impl std::error::Error for Error {
         use Error::*;
         match &self {
             NullInStr(err) => Some(err),
-            CheckNAtomsDuringRead(err) | CheckNAtomsDuringIter(err) => Some(err.as_ref()),
+            CouldNotCheckNAtoms(err) => Some(err.as_ref()),
             _ => None,
         }
     }
@@ -123,14 +122,10 @@ impl std::fmt::Display for Error {
             }
             InvalidOsStr => write!(f, "Paths must be valid unicode on this platform"),
             NullInStr(_err) => write!(f, "Paths cannot include null bytes"),
-            CheckNAtomsDuringRead(_err) => write!(
+            CouldNotCheckNAtoms(_err) => write!(
                 f,
-                "Failed to check number of atoms in trajectory while reading a frame"
-            ),
-            CheckNAtomsDuringIter(_err) => write!(
-                f,
-                "Failed to check number of atoms in trajectory while creating iterator"
-            ),
+                "Failed to read number of atoms in trajectory file"
+            )
         }
     }
 }
