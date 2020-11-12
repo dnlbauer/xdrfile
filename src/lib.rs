@@ -80,6 +80,8 @@ use std::cell::Cell;
 use std::ffi::CString;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::convert::TryInto;
+use std::io::SeekFrom;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum FileMode {
@@ -157,7 +159,6 @@ impl XDRFile {
 
     /// Get the current position in the file
     pub fn tell(&self) -> u64 {
-        use std::convert::TryInto as _;
         unsafe {
             xdr_seek::xdr_tell(self.xdrfile)
                 .try_into()
@@ -168,11 +169,10 @@ impl XDRFile {
 
 impl io::Seek for XDRFile {
     fn seek(&mut self, pos: io::SeekFrom) -> io::Result<u64> {
-        use std::io::SeekFrom::*;
         let (whence, pos) = match pos {
-            Start(u) => (0, u as i64),
-            Current(i) => (1, i),
-            End(i) => (2, i),
+            SeekFrom::Start(u) => (0, u as i64),
+            SeekFrom::Current(i) => (1, i),
+            SeekFrom::End(i) => (2, i),
         };
         unsafe {
             let code = xdr_seek::xdr_seek(self.xdrfile, pos, whence) as u32;
@@ -482,6 +482,8 @@ mod tests {
 
     use super::*;
     use tempfile::NamedTempFile;
+    use std::io::Seek;
+    use std::io::Write;
 
     #[test]
     fn test_read_write_xtc() -> Result<()> {
@@ -681,7 +683,6 @@ mod tests {
 
         let mut new_frame = Frame::with_capacity(natoms);
         let mut f = TRRTrajectory::open_read(tmp_path)?;
-        use std::io::Seek as _;
         let pos = f.seek(std::io::SeekFrom::Current(144))?;
         assert_eq!(pos, after_first_frame);
 
@@ -771,7 +772,6 @@ mod tests {
         }
 
         let mut file = std::fs::File::create(tmp_path)?;
-        use std::io::Write as _;
         file.write_all(&[0; 999])?;
         file.flush()?;
 
