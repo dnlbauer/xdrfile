@@ -139,8 +139,10 @@ pub enum ErrorTask {
     Read,
     /// A frame was being written to a file
     Write,
-    /// An file was being flushed to disk
+    /// A file was being flushed to disk
     Flush,
+    /// A seek operation was being run on a file
+    Seek,
 }
 
 impl std::fmt::Display for ErrorTask {
@@ -151,6 +153,7 @@ impl std::fmt::Display for ErrorTask {
             Read => write!(f, "reading trajectory"),
             Write => write!(f, "writing trajectory"),
             Flush => write!(f, "flushing trajectory"),
+            Seek => write!(f, "seeking in trajectory"),
         }
     }
 }
