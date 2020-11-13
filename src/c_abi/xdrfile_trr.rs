@@ -52,7 +52,7 @@ mod tests {
 
         let mut natoms = 0;
         unsafe {
-            read_trr_natoms(path.as_ptr() as *const i8, &mut natoms);
+            read_trr_natoms(path.as_ptr(), &mut natoms);
         }
         assert!(natoms == 304);
         Ok(())
@@ -64,7 +64,7 @@ mod tests {
         let mut nframes: u64 = 0;
 
         unsafe {
-            let code = read_trr_nframes(path.as_ptr() as *const i8, &mut nframes);
+            let code = read_trr_nframes(path.as_ptr(), &mut nframes);
             assert!(code as u32 == exdrOK);
         }
         assert!(nframes == 38, "{:?}", nframes);

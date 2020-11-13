@@ -21,13 +21,13 @@ fn main() -> Result<()> {
 
     // a frame object is used to get to read or write from a trajectory
     // without instantiating data arrays for every step
-    let mut frame = Frame::with_capacity(num_atoms);
+    let mut frame = Frame::with_len(num_atoms);
 
     // read the first frame of the trajectory
     trj.read(&mut frame)?;
 
     assert_eq!(frame.step, 1);
-    assert_eq!(frame.num_atoms, num_atoms);
+    assert_eq!(frame.len(), num_atoms);
 
     let first_atom_coords = frame.coords[0];
     assert_eq!(first_atom_coords, [-0.8901, 0.4127, -0.055499997]);
@@ -53,7 +53,7 @@ fn main() -> Result<()> {
     for (idx, result) in trj.into_iter().enumerate() {
         let frame = result?;
         println!("{}", frame.time);
-        assert_eq!(idx+1, frame.step as usize);
+        assert_eq!(idx+1, frame.step);
     }
     Ok(())
 }

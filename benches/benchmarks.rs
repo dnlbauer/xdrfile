@@ -11,7 +11,6 @@ fn gen_test_traj(num_atoms: usize, num_frames: usize) -> Result<NamedTempFile> {
     let mut f = XTCTrajectory::open_write(&tmp_path)?;
 
     let mut frame = Frame {
-        num_atoms: num_atoms as u32,
         step: 1,
         time: 1.0,
         box_vector: [[1.0, 2.0, 3.0], [2.0, 1.0, 3.0], [3.0, 2.0, 1.0]],
