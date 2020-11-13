@@ -18,6 +18,9 @@ criterion = "0.3"
 [build-dependencies]
 cc = { version = "1.0", features = ["parallel" ]}
 
+[lib]
+bench = false
+
 [[bench]]
 name = "benchmarks"
 harness = false
