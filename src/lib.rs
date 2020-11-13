@@ -634,9 +634,8 @@ mod tests {
         let tempfile = NamedTempFile::new()?;
         let tmp_path = tempfile.path();
 
-        let natoms: u32 = 2;
+        let natoms: usize = 2;
         let frame = Frame {
-            num_atoms: natoms,
             step: 5,
             time: 2.0,
             box_vector: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
@@ -648,7 +647,7 @@ mod tests {
         assert_eq!(f.tell(), 144);
         f.flush()?;
 
-        let mut new_frame = Frame::with_capacity(natoms);
+        let mut new_frame = Frame::with_len(natoms);
         let mut f = TRRTrajectory::open_read(tmp_path)?;
         assert_eq!(f.tell(), 0);
 
@@ -663,9 +662,8 @@ mod tests {
         let tempfile = NamedTempFile::new()?;
         let tmp_path = tempfile.path();
 
-        let natoms: u32 = 2;
+        let natoms: usize = 2;
         let mut frame = Frame {
-            num_atoms: natoms,
             step: 0,
             time: 0.0,
             box_vector: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
@@ -680,7 +678,7 @@ mod tests {
         let after_second_frame = f.tell();
         f.flush()?;
 
-        let mut new_frame = Frame::with_capacity(natoms);
+        let mut new_frame = Frame::with_len(natoms);
         let mut f = TRRTrajectory::open_read(tmp_path)?;
         let pos = f.seek(std::io::SeekFrom::Current(144))?;
         assert_eq!(pos, after_first_frame);
@@ -688,7 +686,7 @@ mod tests {
         f.read(&mut new_frame)?;
         assert_eq!(f.tell(), after_second_frame);
 
-        assert_eq!(new_frame.num_atoms, frame.num_atoms);
+        assert_eq!(new_frame.len(), frame.len());
         assert_eq!(new_frame.step, frame.step);
         assert_eq!(new_frame.time, frame.time);
         assert_eq!(new_frame.box_vector, frame.box_vector);
