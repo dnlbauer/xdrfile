@@ -80,9 +80,8 @@ use std::cell::Cell;
 use std::convert::{TryFrom, TryInto};
 use std::ffi::CString;
 use std::io;
-use std::path::{Path, PathBuf};
-use std::convert::TryInto;
 use std::io::SeekFrom;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum FileMode {
@@ -179,12 +178,15 @@ impl XDRFile {
 impl io::Seek for XDRFile {
     fn seek(&mut self, pos: io::SeekFrom) -> io::Result<u64> {
         let (whence, pos) = match pos {
-            SeekFrom::Start(u) => (0, u as i64),
+            SeekFrom::Start(u) => (
+                0,
+                i64::try_from(u).expect("Seek position did not fit in i64"),
+            ),
             SeekFrom::Current(i) => (1, i),
             SeekFrom::End(i) => (2, i),
         };
         unsafe {
-            let code = xdr_seek::xdr_seek(self.xdrfile, pos, whence) as u32;
+            let code = xdr_seek::xdr_seek(self.xdrfile, pos, whence);
             match check_code(code, ErrorTask::Seek) {
                 None => Ok(self.tell()),
                 Some(err) => Err(io::Error::new(io::ErrorKind::Other, err)),
@@ -488,9 +490,9 @@ impl io::Seek for TRRTrajectory {
 mod tests {
 
     use super::*;
-    use tempfile::NamedTempFile;
     use std::io::Seek;
     use std::io::Write;
+    use tempfile::NamedTempFile;
 
     #[test]
     fn test_read_write_xtc() -> Result<()> {
