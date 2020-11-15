@@ -3,4 +3,7 @@ rust:
   - stable
   - beta
   - nightly
- 
+git:
+  depth: 10
+after_success:
+  ./.travis_bench.sh
