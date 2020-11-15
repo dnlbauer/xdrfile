@@ -289,8 +289,8 @@ impl Trajectory for XTCTrajectory {
                 to_c_int(frame.len(), ErrorTask::Write)?,
                 to_c_int(frame.step, ErrorTask::Write)?,
                 frame.time,
-                frame.box_vector.as_ptr() as *mut [[f32; 3]; 3],
-                frame.coords[..].as_ptr() as *mut [f32; 3],
+                &frame.box_vector,
+                frame.coords.as_ptr(),
                 1000.0,
             );
             if let Some(err) = check_code(code, ErrorTask::Write) {
@@ -320,7 +320,7 @@ impl Trajectory for XTCTrajectory {
                 unsafe {
                     let path = path_to_cstring(&self.handle.path)?;
                     let path_p = path.into_raw();
-                    let code = xdrfile_xtc::read_xtc_natoms(path_p, &mut num_atoms as *const c_int);
+                    let code = xdrfile_xtc::read_xtc_natoms(path_p, &mut num_atoms);
                     // Reconstitute the CString so it is deallocated correctly
                     let _ = CString::from_raw(path_p);
 
@@ -420,8 +420,8 @@ impl Trajectory for TRRTrajectory {
                 to_c_int(frame.step, ErrorTask::Write)?,
                 frame.time,
                 0.0,
-                frame.box_vector.as_ptr() as *mut [[f32; 3]; 3],
-                frame.coords[..].as_ptr() as *mut [f32; 3],
+                &frame.box_vector,
+                frame.coords[..].as_ptr(),
                 std::ptr::null_mut(),
                 std::ptr::null_mut(),
             );
@@ -451,7 +451,7 @@ impl Trajectory for TRRTrajectory {
                 unsafe {
                     let path = path_to_cstring(&self.handle.path)?;
                     let path_p = path.into_raw();
-                    let code = xdrfile_trr::read_trr_natoms(path_p, &mut num_atoms as *const c_int);
+                    let code = xdrfile_trr::read_trr_natoms(path_p, &mut num_atoms);
                     // Reconstitute the CString so it is deallocated correctly
                     let _ = CString::from_raw(path_p);
 

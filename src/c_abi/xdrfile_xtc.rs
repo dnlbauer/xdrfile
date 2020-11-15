@@ -29,8 +29,8 @@ extern "C" {
         natoms: ::std::os::raw::c_int,
         step: ::std::os::raw::c_int,
         time: ::std::os::raw::c_float,
-        box_vec: *mut Matrix,
-        x: *mut Rvec,
+        box_vec: *const Matrix,
+        x: *const Rvec,
         prec: ::std::os::raw::c_float,
     ) -> ::std::os::raw::c_int;
 }
