@@ -277,7 +277,7 @@ impl Trajectory for XTCTrajectory {
             if let Some(err) = check_code(code, ErrorTask::Read) {
                 return Err(err);
             }
-            frame.step = usize::try_from(step).map_err(|_| Error::StepSizeOutOfRange(step))?;
+            frame.step = usize::try_from(step).map_err(|_| Error::StepOutOfRange(step))?;
             Ok(())
         }
     }
@@ -406,7 +406,7 @@ impl Trajectory for TRRTrajectory {
             if let Some(err) = check_code(code, ErrorTask::Read) {
                 return Err(err);
             }
-            frame.step = usize::try_from(step).map_err(|_| Error::StepSizeOutOfRange(step))?;
+            frame.step = usize::try_from(step).map_err(|_| Error::StepOutOfRange(step))?;
             Ok(())
         }
     }

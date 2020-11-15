@@ -29,15 +29,15 @@ pub enum Error {
     NullInStr(std::ffi::NulError),
     CouldNotCheckNAtoms(Box<Error>),
     /// Step was out of range for usize on this platform
-    StepSizeOutOfRange(i32),
+    StepOutOfRange(i32),
+    /// natoms was out of range for usize on this platform
+    NumAtomsOutOfRange(c_int),
     /// A numeric cast from `value` failed during `task`
     CastToCintFailed {
         source: std::num::TryFromIntError,
         task: ErrorTask,
         value: usize,
     },
-    /// A numeric cast from `value` failed during `task`
-    NumAtomsOutOfRange(c_int),
 }
 
 impl Error {
@@ -137,9 +137,16 @@ impl std::fmt::Display for Error {
             CouldNotCheckNAtoms(_err) => {
                 write!(f, "Failed to read number of atoms in trajectory file")
             }
-            StepSizeOutOfRange(n) | NumAtomsOutOfRange(n) => {
-                write!(f, "Step {} does not fit in usize on this platform", n)
-            }
+            StepOutOfRange(n) => write!(
+                f,
+                "Illegal step size while reading trajectory: Failed to cast {} to usize.",
+                n
+            ),
+            NumAtomsOutOfRange(n) => write!(
+                f,
+                "Illegal number of atoms while reading trajectory: Failed to cast {} to usize.",
+                n
+            ),
             CastToCintFailed { value, task, .. } => write!(
                 f,
                 "Numeric cast from {value}:usize to C int failed while {task}",
