@@ -816,6 +816,13 @@ mod tests {
         });
         assert_eq!(expected, to!(big_number, ErrorTask::Write));
 
+        let num_atoms: usize = 304;
+        let res: Result<u8, _> = to!(num_atoms, ErrorTask::Write);
+        assert_eq!(
+            format!("{}", res.unwrap_err()),
+            "Illegal num_atoms while writing trajectory: Failed to cast 304 to u8"
+        );
+
         Ok(())
     }
 }
