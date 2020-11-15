@@ -30,7 +30,7 @@ pub enum Error {
     /// Step was out of range for usize on this platform
     StepSizeOutOfRange(i32),
     /// A numeric cast from `value` failed during `task`
-    NumericCastFailed {
+    CastFromI32Failed {
         source: std::num::TryFromIntError,
         task: ErrorTask,
         value: usize,
@@ -72,7 +72,7 @@ impl std::error::Error for Error {
         match &self {
             NullInStr(err) => Some(err),
             CouldNotCheckNAtoms(err) => Some(err.as_ref()),
-            NumericCastFailed { source, .. } => Some(source),
+            CastFromI32Failed { source, .. } => Some(source),
             _ => None,
         }
     }
@@ -135,9 +135,9 @@ impl std::fmt::Display for Error {
                 write!(f, "Failed to read number of atoms in trajectory file")
             }
             StepSizeOutOfRange(n) => write!(f, "Step {} does not fit in usize on this platform", n),
-            NumericCastFailed { value, task, .. } => write!(
+            CastFromI32Failed { value, task, .. } => write!(
                 f,
-                "Numeric cast from {value} failed while {task}",
+                "Numeric cast from {value}:usize to i32 failed while {task}",
                 value = value,
                 task = task
             ),

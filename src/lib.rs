@@ -109,7 +109,7 @@ fn path_to_cstring(path: impl AsRef<Path>) -> Result<CString> {
 }
 
 fn to_i32(value: usize, task: ErrorTask) -> Result<i32> {
-    value.try_into().map_err(|e| Error::NumericCastFailed {
+    value.try_into().map_err(|e| Error::CastFromI32Failed {
         source: e,
         value,
         task,
@@ -809,7 +809,7 @@ mod tests {
             Err(e) => e,
             _ => panic!("Conversion from -1 to u8 succeeded"),
         };
-        let expected = Error::NumericCastFailed {
+        let expected = Error::CastFromI32Failed {
             source: try_from_int_err,
             task: ErrorTask::Write,
             value: 3_294_967_295_usize,
