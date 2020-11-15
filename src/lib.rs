@@ -81,6 +81,7 @@ use std::convert::{TryFrom, TryInto};
 use std::ffi::CString;
 use std::io;
 use std::io::SeekFrom;
+use std::os::raw::{c_float, c_int};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -108,8 +109,8 @@ fn path_to_cstring(path: impl AsRef<Path>) -> Result<CString> {
     Ok(CString::new(s)?)
 }
 
-fn to_i32(value: usize, task: ErrorTask) -> Result<i32> {
-    value.try_into().map_err(|e| Error::CastFromI32Failed {
+fn to_c_int(value: usize, task: ErrorTask) -> Result<c_int> {
+    value.try_into().map_err(|e| Error::CastToCintFailed {
         source: e,
         value,
         task,
@@ -222,7 +223,7 @@ pub trait Trajectory {
 /// Read/Write XTC Trajectories
 pub struct XTCTrajectory {
     handle: XDRFile,
-    precision: Cell<f32>, // internal mutability required for read method
+    precision: Cell<c_float>, // internal mutability required for read method
     num_atoms: Lazy<Result<usize>>,
 }
 
@@ -254,7 +255,7 @@ impl XTCTrajectory {
 
 impl Trajectory for XTCTrajectory {
     fn read(&mut self, frame: &mut Frame) -> Result<()> {
-        let mut step: i32 = 0;
+        let mut step: c_int = 0;
 
         let num_atoms = self
             .get_num_atoms()
@@ -264,12 +265,9 @@ impl Trajectory for XTCTrajectory {
         };
 
         unsafe {
-            // C lib requires an i32 to be passed, but step is exposed it as u32
-            // (A step cannot be negative, can it?). So we need to create a step
-            // variable to pass to read_xtc and cast it afterwards to u32
             let code = xdrfile_xtc::read_xtc(
                 self.handle.xdrfile,
-                to_i32(num_atoms, ErrorTask::Read)?,
+                to_c_int(num_atoms, ErrorTask::Read)?,
                 &mut step,
                 &mut frame.time,
                 &mut frame.box_vector,
@@ -288,8 +286,8 @@ impl Trajectory for XTCTrajectory {
         unsafe {
             let code = xdrfile_xtc::write_xtc(
                 self.handle.xdrfile,
-                to_i32(frame.len(), ErrorTask::Write)?,
-                to_i32(frame.step, ErrorTask::Write)?,
+                to_c_int(frame.len(), ErrorTask::Write)?,
+                to_c_int(frame.step, ErrorTask::Write)?,
                 frame.time,
                 frame.box_vector.as_ptr() as *mut [[f32; 3]; 3],
                 frame.coords[..].as_ptr() as *mut [f32; 3],
@@ -317,12 +315,12 @@ impl Trajectory for XTCTrajectory {
     fn get_num_atoms(&mut self) -> Result<usize> {
         self.num_atoms
             .get_or_create(|| {
-                let mut num_atoms: i32 = 0;
+                let mut num_atoms: c_int = 0;
 
                 unsafe {
                     let path = path_to_cstring(&self.handle.path)?;
                     let path_p = path.into_raw();
-                    let code = xdrfile_xtc::read_xtc_natoms(path_p, &mut num_atoms as *const i32);
+                    let code = xdrfile_xtc::read_xtc_natoms(path_p, &mut num_atoms as *const c_int);
                     // Reconstitute the CString so it is deallocated correctly
                     let _ = CString::from_raw(path_p);
 
@@ -384,8 +382,8 @@ impl TRRTrajectory {
 
 impl Trajectory for TRRTrajectory {
     fn read(&mut self, frame: &mut Frame) -> Result<()> {
-        let mut step: i32 = 0;
-        let mut lambda: f32 = 0.0;
+        let mut step: c_int = 0;
+        let mut lambda: c_float = 0.0;
 
         let num_atoms = self
             .get_num_atoms()
@@ -395,13 +393,9 @@ impl Trajectory for TRRTrajectory {
         }
 
         unsafe {
-            // C lib requires an i32 to be passed, but step is exposed it as u32
-            // (A step cannot be negative, can it?). So we need to create a step
-            // variable to pass to read_trr and cast it afterwards to u32.
-            // Similar for lambda.
             let code = xdrfile_trr::read_trr(
                 self.handle.xdrfile,
-                to_i32(num_atoms, ErrorTask::Read)?,
+                to_c_int(num_atoms, ErrorTask::Read)?,
                 &mut step,
                 &mut frame.time,
                 &mut lambda,
@@ -422,8 +416,8 @@ impl Trajectory for TRRTrajectory {
         unsafe {
             let code = xdrfile_trr::write_trr(
                 self.handle.xdrfile,
-                to_i32(frame.len(), ErrorTask::Write)?,
-                to_i32(frame.step, ErrorTask::Write)?,
+                to_c_int(frame.len(), ErrorTask::Write)?,
+                to_c_int(frame.step, ErrorTask::Write)?,
                 frame.time,
                 0.0,
                 frame.box_vector.as_ptr() as *mut [[f32; 3]; 3],
@@ -453,11 +447,11 @@ impl Trajectory for TRRTrajectory {
     fn get_num_atoms(&mut self) -> Result<usize> {
         self.num_atoms
             .get_or_create(|| {
-                let mut num_atoms: i32 = 0;
+                let mut num_atoms: c_int = 0;
                 unsafe {
                     let path = path_to_cstring(&self.handle.path)?;
                     let path_p = path.into_raw();
-                    let code = xdrfile_trr::read_trr_natoms(path_p, &mut num_atoms as *const i32);
+                    let code = xdrfile_trr::read_trr_natoms(path_p, &mut num_atoms as *const c_int);
                     // Reconstitute the CString so it is deallocated correctly
                     let _ = CString::from_raw(path_p);
 
@@ -802,19 +796,22 @@ mod tests {
     }
 
     #[test]
-    fn test_to_i32() -> Result<()> {
-        assert_eq!(24234_i32, to_i32(24234_usize, ErrorTask::Read)?);
+    fn test_to_c_int() -> Result<()> {
+        assert_eq!(24234 as c_int, to_c_int(24234_usize, ErrorTask::Read)?);
 
         let try_from_int_err = match u8::try_from(-1) {
             Err(e) => e,
             _ => panic!("Conversion from -1 to u8 succeeded"),
         };
-        let expected = Error::CastFromI32Failed {
+        let expected = Error::CastToCintFailed {
             source: try_from_int_err,
             task: ErrorTask::Write,
             value: 3_294_967_295_usize,
         };
-        assert_eq!(Err(expected), to_i32(3_294_967_295_usize, ErrorTask::Write));
+        assert_eq!(
+            Err(expected),
+            to_c_int(3_294_967_295_usize, ErrorTask::Write)
+        );
 
         Ok(())
     }
