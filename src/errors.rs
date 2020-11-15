@@ -2,6 +2,7 @@ use crate::c_abi;
 use crate::FileMode;
 use crate::Frame;
 use std::error::Error as StdError;
+use std::os::raw::c_int;
 use std::path::{Path, PathBuf};
 
 /// Error type for the xdrfile library
@@ -35,6 +36,8 @@ pub enum Error {
         task: ErrorTask,
         value: usize,
     },
+    /// A numeric cast from `value` failed during `task`
+    NumAtomsOutOfRange(c_int),
 }
 
 impl Error {
@@ -134,10 +137,12 @@ impl std::fmt::Display for Error {
             CouldNotCheckNAtoms(_err) => {
                 write!(f, "Failed to read number of atoms in trajectory file")
             }
-            StepSizeOutOfRange(n) => write!(f, "Step {} does not fit in usize on this platform", n),
+            StepSizeOutOfRange(n) | NumAtomsOutOfRange(n) => {
+                write!(f, "Step {} does not fit in usize on this platform", n)
+            }
             CastToCintFailed { value, task, .. } => write!(
                 f,
-                "Numeric cast from {value}:usize to i32 failed while {task}",
+                "Numeric cast from {value}:usize to C int failed while {task}",
                 value = value,
                 task = task
             ),

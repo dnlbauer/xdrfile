@@ -327,8 +327,7 @@ impl Trajectory for XTCTrajectory {
                     if let Some(err) = check_code(code, ErrorTask::ReadNumAtoms) {
                         Err(err)
                     } else {
-                        Ok(usize::try_from(num_atoms)
-                            .expect("Number of atoms in file does not fit in usize"))
+                        usize::try_from(num_atoms).map_err(|_| Error::NumAtomsOutOfRange(num_atoms))
                     }
                 }
             })
@@ -458,8 +457,7 @@ impl Trajectory for TRRTrajectory {
                     if let Some(err) = check_code(code, ErrorTask::ReadNumAtoms) {
                         Err(err)
                     } else {
-                        Ok(usize::try_from(num_atoms)
-                            .expect("Number of atoms in file does not fit in usize"))
+                        usize::try_from(num_atoms).map_err(|_| Error::NumAtomsOutOfRange(num_atoms))
                     }
                 }
             })
