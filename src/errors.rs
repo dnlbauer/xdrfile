@@ -1,7 +1,6 @@
 use crate::c_abi;
 use crate::FileMode;
 use crate::Frame;
-use std::convert::TryInto;
 use std::error::Error as StdError;
 use std::path::{Path, PathBuf};
 
@@ -206,7 +205,7 @@ pub enum ErrorCode {
     /// Failed to seek within file
     ExdrNr,
     /// Something unexpected happened
-    UnmatchedCode(c_abi::xdrfile::BindgenTy1),
+    UnmatchedCode(i32),
 }
 
 impl ErrorCode {
@@ -216,13 +215,9 @@ impl ErrorCode {
     }
 }
 
-impl<T> From<T> for ErrorCode
-where
-    T: TryInto<c_abi::xdrfile::BindgenTy1>,
-    <T as TryInto<c_abi::xdrfile::BindgenTy1>>::Error: std::fmt::Debug,
-{
-    fn from(code: T) -> Self {
-        match code.try_into().expect("C API return code was out of range") {
+impl From<i32> for ErrorCode {
+    fn from(code: i32) -> Self {
+        match code {
             c_abi::xdrfile::exdrOK => Self::ExdrOk,
             c_abi::xdrfile::exdrHEADER => Self::ExdrHeader,
             c_abi::xdrfile::exdrSTRING => Self::ExdrString,

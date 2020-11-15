@@ -65,7 +65,7 @@ mod tests {
 
         unsafe {
             let code = read_trr_nframes(path.as_ptr(), &mut nframes);
-            assert!(code as u32 == exdrOK);
+            assert!(code == exdrOK);
         }
         assert!(nframes == 38, "{:?}", nframes);
         Ok(())
@@ -106,7 +106,7 @@ mod tests {
                 v.as_ptr() as *mut Rvec,
                 f.as_ptr() as *mut Rvec,
             );
-            assert!(write_code as u32 == exdrOK);
+            assert!(write_code == exdrOK);
             xdrfile_close(xdr);
         }
 
@@ -134,7 +134,7 @@ mod tests {
                 v2.as_ptr() as *mut Rvec,
                 f2.as_ptr() as *mut Rvec,
             );
-            assert!(read_code as u32 == exdrOK);
+            assert!(read_code == exdrOK);
             xdrfile_close(xdr);
         }
 
