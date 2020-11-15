@@ -109,12 +109,22 @@ fn path_to_cstring(path: impl AsRef<Path>) -> Result<CString> {
     Ok(CString::new(s)?)
 }
 
-fn to_c_int(value: usize, task: ErrorTask) -> Result<c_int> {
-    value.try_into().map_err(|e| Error::CastToCintFailed {
-        source: e,
-        value,
+fn to<I, O>(value: I, task: ErrorTask, name: &'static str) -> Result<O>
+where
+    I: TryInto<O> + std::fmt::Display + Copy,
+{
+    value.try_into().map_err(|_| Error::OutOfRange {
+        name,
+        value: format!("{}", &value),
+        target: std::any::type_name::<O>(),
         task,
     })
+}
+
+macro_rules! to {
+    ($value:expr, $task:expr) => {
+        to($value, $task, stringify!($value))
+    };
 }
 
 /// Convert an error code from a C call to an Error
@@ -267,7 +277,7 @@ impl Trajectory for XTCTrajectory {
         unsafe {
             let code = xdrfile_xtc::read_xtc(
                 self.handle.xdrfile,
-                to_c_int(num_atoms, ErrorTask::Read)?,
+                to!(num_atoms, ErrorTask::Read)?,
                 &mut step,
                 &mut frame.time,
                 &mut frame.box_vector,
@@ -277,7 +287,7 @@ impl Trajectory for XTCTrajectory {
             if let Some(err) = check_code(code, ErrorTask::Read) {
                 return Err(err);
             }
-            frame.step = usize::try_from(step).map_err(|_| Error::StepOutOfRange(step))?;
+            frame.step = to!(step, ErrorTask::ReadNumAtoms)?;
             Ok(())
         }
     }
@@ -286,8 +296,8 @@ impl Trajectory for XTCTrajectory {
         unsafe {
             let code = xdrfile_xtc::write_xtc(
                 self.handle.xdrfile,
-                to_c_int(frame.len(), ErrorTask::Write)?,
-                to_c_int(frame.step, ErrorTask::Write)?,
+                to!(frame.num_atoms(), ErrorTask::Write)?,
+                to!(frame.step, ErrorTask::Write)?,
                 frame.time,
                 &frame.box_vector,
                 frame.coords.as_ptr(),
@@ -327,7 +337,7 @@ impl Trajectory for XTCTrajectory {
                     if let Some(err) = check_code(code, ErrorTask::ReadNumAtoms) {
                         Err(err)
                     } else {
-                        usize::try_from(num_atoms).map_err(|_| Error::NumAtomsOutOfRange(num_atoms))
+                        to!(num_atoms, ErrorTask::ReadNumAtoms)
                     }
                 }
             })
@@ -394,7 +404,7 @@ impl Trajectory for TRRTrajectory {
         unsafe {
             let code = xdrfile_trr::read_trr(
                 self.handle.xdrfile,
-                to_c_int(num_atoms, ErrorTask::Read)?,
+                to!(num_atoms, ErrorTask::Read)?,
                 &mut step,
                 &mut frame.time,
                 &mut lambda,
@@ -406,7 +416,7 @@ impl Trajectory for TRRTrajectory {
             if let Some(err) = check_code(code, ErrorTask::Read) {
                 return Err(err);
             }
-            frame.step = usize::try_from(step).map_err(|_| Error::StepOutOfRange(step))?;
+            frame.step = to!(step, ErrorTask::ReadNumAtoms)?;
             Ok(())
         }
     }
@@ -415,8 +425,8 @@ impl Trajectory for TRRTrajectory {
         unsafe {
             let code = xdrfile_trr::write_trr(
                 self.handle.xdrfile,
-                to_c_int(frame.len(), ErrorTask::Write)?,
-                to_c_int(frame.step, ErrorTask::Write)?,
+                to!(frame.len(), ErrorTask::Write)?,
+                to!(frame.step, ErrorTask::Write)?,
                 frame.time,
                 0.0,
                 &frame.box_vector,
@@ -457,7 +467,7 @@ impl Trajectory for TRRTrajectory {
                     if let Some(err) = check_code(code, ErrorTask::ReadNumAtoms) {
                         Err(err)
                     } else {
-                        usize::try_from(num_atoms).map_err(|_| Error::NumAtomsOutOfRange(num_atoms))
+                        to!(num_atoms, ErrorTask::ReadNumAtoms)
                     }
                 }
             })
@@ -794,22 +804,16 @@ mod tests {
     }
 
     #[test]
-    fn test_to_c_int() -> Result<()> {
-        assert_eq!(24234 as c_int, to_c_int(24234_usize, ErrorTask::Read)?);
+    fn test_to() -> Result<()> {
+        assert_eq!(24234_i32, to!(24234_usize, ErrorTask::Write)?);
 
-        let try_from_int_err = match u8::try_from(-1) {
-            Err(e) => e,
-            _ => panic!("Conversion from -1 to u8 succeeded"),
-        };
-        let expected = Error::CastToCintFailed {
-            source: try_from_int_err,
+        let expected: Result<i32> = Err(Error::OutOfRange {
+            name: "3_294_967_295_usize",
             task: ErrorTask::Write,
-            value: 3_294_967_295_usize,
-        };
-        assert_eq!(
-            Err(expected),
-            to_c_int(3_294_967_295_usize, ErrorTask::Write)
-        );
+            value: "3294967295".to_string(),
+            target: "i32",
+        });
+        assert_eq!(expected, to!(3_294_967_295_usize, ErrorTask::Write));
 
         Ok(())
     }

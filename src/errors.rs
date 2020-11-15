@@ -2,41 +2,29 @@ use crate::c_abi;
 use crate::FileMode;
 use crate::Frame;
 use std::error::Error as StdError;
-use std::os::raw::c_int;
 use std::path::{Path, PathBuf};
 
 /// Error type for the xdrfile library
 #[derive(Debug, Clone, PartialEq)]
 pub enum Error {
     /// An error code from the C API
-    CApiError {
-        code: ErrorCode,
-        task: ErrorTask,
-    },
+    CApiError { code: ErrorCode, task: ErrorTask },
     /// Passed in a frame of the wrong size
-    WrongSizeFrame {
-        expected: usize,
-        found: usize,
-    },
+    WrongSizeFrame { expected: usize, found: usize },
     /// C API failed to open a file (No return code provided)
-    CouldNotOpen {
-        path: PathBuf,
-        mode: FileMode,
-    },
+    CouldNotOpen { path: PathBuf, mode: FileMode },
     /// A path could not be converted to &OsStr
     InvalidOsStr,
     /// A path could not be converted to &CStr because it had a null byte
     NullInStr(std::ffi::NulError),
+    /// Checking the number of atoms failed while reading a frame
     CouldNotCheckNAtoms(Box<Error>),
-    /// Step was out of range for usize on this platform
-    StepOutOfRange(i32),
-    /// natoms was out of range for usize on this platform
-    NumAtomsOutOfRange(c_int),
-    /// A numeric cast from `value` failed during `task`
-    CastToCintFailed {
-        source: std::num::TryFromIntError,
+    /// Error for an out-of-range numeric conversion
+    OutOfRange {
+        name: &'static str,
         task: ErrorTask,
-        value: usize,
+        value: String,
+        target: &'static str,
     },
 }
 
@@ -75,7 +63,6 @@ impl std::error::Error for Error {
         match &self {
             NullInStr(err) => Some(err),
             CouldNotCheckNAtoms(err) => Some(err.as_ref()),
-            CastToCintFailed { source, .. } => Some(source),
             _ => None,
         }
     }
@@ -137,21 +124,18 @@ impl std::fmt::Display for Error {
             CouldNotCheckNAtoms(_err) => {
                 write!(f, "Failed to read number of atoms in trajectory file")
             }
-            StepOutOfRange(n) => write!(
+            OutOfRange {
+                name,
+                task,
+                value,
+                target,
+            } => write!(
                 f,
-                "Illegal step size while reading trajectory: Failed to cast {} to usize.",
-                n
-            ),
-            NumAtomsOutOfRange(n) => write!(
-                f,
-                "Illegal number of atoms while reading trajectory: Failed to cast {} to usize.",
-                n
-            ),
-            CastToCintFailed { value, task, .. } => write!(
-                f,
-                "Numeric cast from {value}:usize to C int failed while {task}",
+                "Illegal {name} while {task}: Failed to cast {value} to {target}",
+                name = name,
+                task = task,
                 value = value,
-                task = task
+                target = target
             ),
         }
     }
