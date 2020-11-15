@@ -287,7 +287,7 @@ impl Trajectory for XTCTrajectory {
             if let Some(err) = check_code(code, ErrorTask::Read) {
                 return Err(err);
             }
-            frame.step = to!(step, ErrorTask::ReadNumAtoms)?;
+            frame.step = to!(step, ErrorTask::Read)?;
             Ok(())
         }
     }
@@ -314,7 +314,7 @@ impl Trajectory for XTCTrajectory {
     fn flush(&mut self) -> Result<()> {
         unsafe {
             let code = xdr_seek::xdr_flush(self.handle.xdrfile);
-            if let Some(err) = check_code(code, ErrorTask::Read) {
+            if let Some(err) = check_code(code, ErrorTask::Flush) {
                 Err(err)
             } else {
                 Ok(())
@@ -416,7 +416,7 @@ impl Trajectory for TRRTrajectory {
             if let Some(err) = check_code(code, ErrorTask::Read) {
                 return Err(err);
             }
-            frame.step = to!(step, ErrorTask::ReadNumAtoms)?;
+            frame.step = to!(step, ErrorTask::Read)?;
             Ok(())
         }
     }
@@ -807,13 +807,14 @@ mod tests {
     fn test_to() -> Result<()> {
         assert_eq!(24234_i32, to!(24234_usize, ErrorTask::Write)?);
 
+        let big_number = 3_294_967_295_usize;
         let expected: Result<i32> = Err(Error::OutOfRange {
-            name: "3_294_967_295_usize",
+            name: "big_number",
             task: ErrorTask::Write,
             value: "3294967295".to_string(),
             target: "i32",
         });
-        assert_eq!(expected, to!(3_294_967_295_usize, ErrorTask::Write));
+        assert_eq!(expected, to!(big_number, ErrorTask::Write));
 
         Ok(())
     }
