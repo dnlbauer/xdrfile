@@ -40,14 +40,13 @@ impl Frame {
     }
 
     /// Filters the frame by removing all atoms not matching the given indeces.
-    pub fn filter_coords(self: &mut Frame, indeces: &[usize]) {
+    pub fn filter_coords(self: &mut Frame, indices: &[usize]) {
         self.coords = self
             .coords
             .iter()
-            .map(|elem| elem.clone())
             .enumerate()
-            .filter(|&(i, _)| indeces.contains(&i))
-            .map(|(_, elem)| elem)
+            .filter(|(i, _)| indices.contains(i))
+            .map(|(_, elem)| *elem)
             .collect();
     }
 
