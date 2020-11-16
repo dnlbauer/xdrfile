@@ -64,7 +64,7 @@ impl std::error::Error for Error {
                 } else {
                     None
                 }
-            },
+            }
             Error::CouldNotCheckNAtoms(err) => Some(err.as_ref()),
             _ => None,
         }
@@ -200,7 +200,7 @@ pub enum ErrorCode {
 
 impl ErrorCode {
     /// True if the error is an end of file error, false otherwise
-    pub fn is_eof(&self) -> bool {
+    pub fn is_eof(self) -> bool {
         matches!(self, Self::ExdrEndOfFile)
     }
 }
