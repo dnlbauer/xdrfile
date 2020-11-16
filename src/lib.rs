@@ -835,4 +835,33 @@ mod tests {
 
         Ok(())
     }
+
+    #[test]
+    fn test_write_outofrange_step() -> Result<(), Box<dyn std::error::Error>> {
+        let tempfile = NamedTempFile::new()?;
+        let tmp_path = tempfile.path();
+        let mut traj = XTCTrajectory::open_write(tmp_path)?;
+
+        let frame = Frame {
+            step: usize::MAX,
+            time: 0.0,
+            box_vector: [[0.0; 3]; 3],
+            coords: vec![[1.0; 3]],
+        };
+        let expected = Error::OutOfRange {
+            name: "frame.step",
+            value: usize::MAX.to_string(),
+            target: "i32",
+            task: ErrorTask::Write,
+        };
+
+        if let Err(e) = traj.write(&frame) {
+            print!("{:?}", e);
+            assert_eq!(expected, e);
+        } else {
+            panic!("Writing frame with step=usize::MAX should not succeed.")
+        }
+
+        Ok(())
+    }
 }
