@@ -4,6 +4,7 @@ version = "0.3.0"
 authors = ["Daniel Bauer <bauer@cbs.tu-darmstadt.de>"]
 license = "LGPL-3.0-only"
 edition = "2018"
+repository = "https://github.com/danijoo/xdrfile"
 description = "Wrapper around the gromacs libxdrfile library. Can be used to read and write gromacs trajectories in xtc and trr format."
 readme = "README.md"
 categories = ["external-ffi-bindings", "encoding", "science"]
