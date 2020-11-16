@@ -264,6 +264,11 @@ impl XTCTrajectory {
     pub fn open_write(path: impl AsRef<Path>) -> Result<Self> {
         Self::open(path, FileMode::Write)
     }
+
+    /// The mode the current file is open in
+    pub fn file_mode(&self) -> FileMode {
+        self.handle.filemode
+    }
 }
 
 impl Trajectory for XTCTrajectory {
@@ -413,6 +418,11 @@ impl TRRTrajectory {
     /// Open a file in write mode
     pub fn open_write(path: impl AsRef<Path>) -> Result<Self> {
         Self::open(path, FileMode::Write)
+    }
+
+    /// The mode the current file is open in
+    pub fn file_mode(&self) -> FileMode {
+        self.handle.filemode
     }
 }
 
