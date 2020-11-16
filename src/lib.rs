@@ -77,12 +77,14 @@ use c_abi::xdrfile_xtc;
 
 use lazy_init::Lazy;
 use std::cell::Cell;
+use std::convert::{TryFrom, TryInto};
 use std::ffi::CString;
 use std::io;
-use std::path::{Path, PathBuf};
-use std::convert::TryInto;
 use std::io::SeekFrom;
+use std::os::raw::{c_float, c_int};
+use std::path::{Path, PathBuf};
 
+/// File Mode for accessing trajectories.
 #[derive(Debug, Clone, PartialEq)]
 pub enum FileMode {
     Write,
@@ -104,16 +106,37 @@ impl FileMode {
 }
 
 fn path_to_cstring(path: impl AsRef<Path>) -> Result<CString> {
-    let s = path.as_ref().to_str().ok_or(Error::InvalidOsStr)?;
-    Ok(CString::new(s)?)
+    if let Some(s) = path.as_ref().to_str() {
+        CString::new(s).map_err(|e| Error::InvalidOsStr(Some(e)))
+    } else {
+        Err(Error::InvalidOsStr(None))
+    }
+}
+
+fn to<I, O>(value: I, task: ErrorTask, name: &'static str) -> Result<O>
+where
+    I: TryInto<O> + std::fmt::Display + Copy,
+{
+    value.try_into().map_err(|_| Error::OutOfRange {
+        name,
+        value: format!("{}", &value),
+        target: std::any::type_name::<O>(),
+        task,
+    })
+}
+
+macro_rules! to {
+    ($value:expr, $task:expr) => {
+        to($value, $task, stringify!($value))
+    };
 }
 
 /// Convert an error code from a C call to an Error
 ///
 /// `code` should be an integer return code returned from the C API.
-/// If `code` indicates the function returned successfully, Nothing is returned;
+/// If `code` indicates the function returned successfully, None is returned;
 /// otherwise, the code is converted into the appropriate `Error`.
-pub fn check_code(code: impl Into<ErrorCode>, task: ErrorTask) -> Option<Error> {
+fn check_code(code: impl Into<ErrorCode>, task: ErrorTask) -> Option<Error> {
     let code: ErrorCode = code.into();
     if let ErrorCode::ExdrOk = code {
         None
@@ -170,12 +193,15 @@ impl XDRFile {
 impl io::Seek for XDRFile {
     fn seek(&mut self, pos: io::SeekFrom) -> io::Result<u64> {
         let (whence, pos) = match pos {
-            SeekFrom::Start(u) => (0, u as i64),
+            SeekFrom::Start(u) => (
+                0,
+                i64::try_from(u).expect("Seek position did not fit in i64"),
+            ),
             SeekFrom::Current(i) => (1, i),
             SeekFrom::End(i) => (2, i),
         };
         unsafe {
-            let code = xdr_seek::xdr_seek(self.xdrfile, pos, whence) as u32;
+            let code = xdr_seek::xdr_seek(self.xdrfile, pos, whence);
             match check_code(code, ErrorTask::Seek) {
                 None => Ok(self.tell()),
                 Some(err) => Err(io::Error::new(io::ErrorKind::Other, err)),
@@ -208,10 +234,10 @@ pub trait Trajectory {
     fn get_num_atoms(&mut self) -> Result<usize>;
 }
 
-/// Read/Write XTC Trajectories
+/// Handle to Read/Write XTC Trajectories
 pub struct XTCTrajectory {
     handle: XDRFile,
-    precision: Cell<f32>, // internal mutability required for read method
+    precision: Cell<c_float>, // internal mutability required for read method
     num_atoms: Lazy<Result<usize>>,
 }
 
@@ -243,34 +269,30 @@ impl XTCTrajectory {
 
 impl Trajectory for XTCTrajectory {
     fn read(&mut self, frame: &mut Frame) -> Result<()> {
-        let mut step: i32 = 0;
+        let mut step: c_int = 0;
 
         let num_atoms = self
             .get_num_atoms()
             .map_err(|e| Error::CouldNotCheckNAtoms(Box::new(e)))?;
         if num_atoms != frame.coords.len() {
             Err((&*frame, num_atoms))?;
-        }
+        };
 
         unsafe {
-            // C lib requires an i32 to be passed, but step is exposed it as u32
-            // (A step cannot be negative, can it?). So we need to create a step
-            // variable to pass to read_xtc and cast it afterwards to u32
             let code = xdrfile_xtc::read_xtc(
                 self.handle.xdrfile,
-                num_atoms as i32,
+                to!(num_atoms, ErrorTask::Read)?,
                 &mut step,
                 &mut frame.time,
                 &mut frame.box_vector,
                 frame.coords.as_mut_ptr(),
                 &mut self.precision.get(),
-            ) as u32;
-            frame.step = step as usize;
+            );
             if let Some(err) = check_code(code, ErrorTask::Read) {
-                Err(err)
-            } else {
-                Ok(())
+                return Err(err);
             }
+            frame.step = to!(step, ErrorTask::Read)?;
+            Ok(())
         }
     }
 
@@ -278,13 +300,13 @@ impl Trajectory for XTCTrajectory {
         unsafe {
             let code = xdrfile_xtc::write_xtc(
                 self.handle.xdrfile,
-                frame.len() as i32,
-                frame.step as i32,
+                to!(frame.num_atoms(), ErrorTask::Write)?,
+                to!(frame.step, ErrorTask::Write)?,
                 frame.time,
-                frame.box_vector.as_ptr() as *mut [[f32; 3]; 3],
-                frame.coords[..].as_ptr() as *mut [f32; 3],
+                &frame.box_vector,
+                frame.coords.as_ptr(),
                 1000.0,
-            ) as u32;
+            );
             if let Some(err) = check_code(code, ErrorTask::Write) {
                 Err(err)
             } else {
@@ -295,8 +317,8 @@ impl Trajectory for XTCTrajectory {
 
     fn flush(&mut self) -> Result<()> {
         unsafe {
-            let code = xdr_seek::xdr_flush(self.handle.xdrfile) as u32;
-            if let Some(err) = check_code(code, ErrorTask::Read) {
+            let code = xdr_seek::xdr_flush(self.handle.xdrfile);
+            if let Some(err) = check_code(code, ErrorTask::Flush) {
                 Err(err)
             } else {
                 Ok(())
@@ -307,20 +329,19 @@ impl Trajectory for XTCTrajectory {
     fn get_num_atoms(&mut self) -> Result<usize> {
         self.num_atoms
             .get_or_create(|| {
-                let mut num_atoms: i32 = 0;
+                let mut num_atoms: c_int = 0;
 
                 unsafe {
                     let path = path_to_cstring(&self.handle.path)?;
                     let path_p = path.into_raw();
-                    let code =
-                        xdrfile_xtc::read_xtc_natoms(path_p, &mut num_atoms as *const i32) as u32;
+                    let code = xdrfile_xtc::read_xtc_natoms(path_p, &mut num_atoms);
                     // Reconstitute the CString so it is deallocated correctly
                     let _ = CString::from_raw(path_p);
 
                     if let Some(err) = check_code(code, ErrorTask::ReadNumAtoms) {
                         Err(err)
                     } else {
-                        Ok(num_atoms as usize)
+                        to!(num_atoms, ErrorTask::ReadNumAtoms)
                     }
                 }
             })
@@ -341,7 +362,7 @@ impl io::Seek for XTCTrajectory {
     }
 }
 
-/// Read/Write TRR Trajectories
+/// Handle to Read/Write TRR Trajectories
 pub struct TRRTrajectory {
     handle: XDRFile,
     num_atoms: Lazy<Result<usize>>,
@@ -374,8 +395,8 @@ impl TRRTrajectory {
 
 impl Trajectory for TRRTrajectory {
     fn read(&mut self, frame: &mut Frame) -> Result<()> {
-        let mut step: i32 = 0;
-        let mut lambda: f32 = 0.0;
+        let mut step: c_int = 0;
+        let mut lambda: c_float = 0.0;
 
         let num_atoms = self
             .get_num_atoms()
@@ -385,13 +406,9 @@ impl Trajectory for TRRTrajectory {
         }
 
         unsafe {
-            // C lib requires an i32 to be passed, but step is exposed it as u32
-            // (A step cannot be negative, can it?). So we need to create a step
-            // variable to pass to read_trr and cast it afterwards to u32.
-            // Similar for lambda.
             let code = xdrfile_trr::read_trr(
                 self.handle.xdrfile,
-                num_atoms as i32,
+                to!(num_atoms, ErrorTask::Read)?,
                 &mut step,
                 &mut frame.time,
                 &mut lambda,
@@ -399,14 +416,12 @@ impl Trajectory for TRRTrajectory {
                 frame.coords.as_mut_ptr(),
                 std::ptr::null_mut(),
                 std::ptr::null_mut(),
-            ) as u32;
-
-            frame.step = step as usize;
+            );
             if let Some(err) = check_code(code, ErrorTask::Read) {
-                Err(err)
-            } else {
-                Ok(())
+                return Err(err);
             }
+            frame.step = to!(step, ErrorTask::Read)?;
+            Ok(())
         }
     }
 
@@ -414,15 +429,15 @@ impl Trajectory for TRRTrajectory {
         unsafe {
             let code = xdrfile_trr::write_trr(
                 self.handle.xdrfile,
-                frame.len() as i32,
-                frame.step as i32,
+                to!(frame.len(), ErrorTask::Write)?,
+                to!(frame.step, ErrorTask::Write)?,
                 frame.time,
                 0.0,
-                frame.box_vector.as_ptr() as *mut [[f32; 3]; 3],
-                frame.coords[..].as_ptr() as *mut [f32; 3],
+                &frame.box_vector,
+                frame.coords[..].as_ptr(),
                 std::ptr::null_mut(),
                 std::ptr::null_mut(),
-            ) as u32;
+            );
             if let Some(err) = check_code(code, ErrorTask::Write) {
                 Err(err)
             } else {
@@ -433,7 +448,7 @@ impl Trajectory for TRRTrajectory {
 
     fn flush(&mut self) -> Result<()> {
         unsafe {
-            let code = xdr_seek::xdr_flush(self.handle.xdrfile) as u32;
+            let code = xdr_seek::xdr_flush(self.handle.xdrfile);
             if let Some(err) = check_code(code, ErrorTask::Flush) {
                 Err(err)
             } else {
@@ -445,19 +460,18 @@ impl Trajectory for TRRTrajectory {
     fn get_num_atoms(&mut self) -> Result<usize> {
         self.num_atoms
             .get_or_create(|| {
-                let mut num_atoms: i32 = 0;
+                let mut num_atoms: c_int = 0;
                 unsafe {
                     let path = path_to_cstring(&self.handle.path)?;
                     let path_p = path.into_raw();
-                    let code =
-                        xdrfile_trr::read_trr_natoms(path_p, &mut num_atoms as *const i32) as u32;
+                    let code = xdrfile_trr::read_trr_natoms(path_p, &mut num_atoms);
                     // Reconstitute the CString so it is deallocated correctly
                     let _ = CString::from_raw(path_p);
 
                     if let Some(err) = check_code(code, ErrorTask::ReadNumAtoms) {
                         Err(err)
                     } else {
-                        Ok(num_atoms as usize)
+                        to!(num_atoms, ErrorTask::ReadNumAtoms)
                     }
                 }
             })
@@ -482,9 +496,9 @@ impl io::Seek for TRRTrajectory {
 mod tests {
 
     use super::*;
-    use tempfile::NamedTempFile;
     use std::io::Seek;
     use std::io::Write;
+    use tempfile::NamedTempFile;
 
     #[test]
     fn test_read_write_xtc() -> Result<()> {
@@ -530,7 +544,7 @@ mod tests {
         let tempfile = NamedTempFile::new().expect("Could not create temporary file");
         let tmp_path = tempfile.path();
 
-        let natoms: u32 = 2;
+        let natoms = 2;
         let frame = Frame {
             step: 5,
             time: 2.0,
@@ -545,7 +559,7 @@ mod tests {
         }
         f.flush()?;
 
-        let mut new_frame = Frame::with_len(natoms as usize);
+        let mut new_frame = Frame::with_len(natoms);
         let mut f = TRRTrajectory::open_read(tmp_path)?;
         // let num_atoms = f.get_num_atoms()?;
         // assert_eq!(num_atoms, natoms);
@@ -611,21 +625,28 @@ mod tests {
 
     #[test]
     fn test_path_to_cstring() -> Result<(), Box<dyn std::error::Error>> {
-        let result_invalid = path_to_cstring(PathBuf::from("invalid/\0path"));
-
-        if let Err(err) = result_invalid {
-            match err {
-                Error::NullInStr(_) => (),
-                Error::InvalidOsStr => (),
-                _ => panic!("Improper error type for path_to_cstring"),
+        // A valid string should convert to CString successfully
+        let valid_result = path_to_cstring(PathBuf::from("test"));
+        match valid_result {
+            Ok(s) => {
+                assert_eq!(s, CString::new("test")?);
             }
-        } else {
-            panic!("path_to_cstring should return Err if there are null bytes");
+            Err(_) => panic!("Valid Path failed to convert to CString.")
         }
 
-        let result_valid = path_to_cstring("valid/path");
-        assert_eq!(result_valid, Ok(CString::new("valid/path")?));
-
+        // \0 in path should result in an InvalidOsStr(Some(NulError)) 
+        let result = path_to_cstring(PathBuf::from("invalid/\0path"));
+        match result {
+            Ok(_) => panic!("Cstring conversion did not fail"),
+            Err(e) => {
+                match e {
+                    Error::InvalidOsStr(opt) => {
+                        assert!(opt.is_some())
+                    }
+                    _ => panic!("Wrong error type. (This should never happend).")
+                }
+            }
+        }
         Ok(())
     }
 
@@ -744,7 +765,7 @@ mod tests {
         let tempfile = NamedTempFile::new()?;
         let tmp_path = tempfile.path();
 
-        let natoms: u32 = 2;
+        let natoms = 2;
         let frame = Frame {
             step: 5,
             time: 2.0,
@@ -755,7 +776,7 @@ mod tests {
         f.write(&frame)?;
         f.flush()?;
 
-        let mut new_frame = Frame::with_len(natoms as usize);
+        let mut new_frame = Frame::with_len(natoms);
         let mut f = XTCTrajectory::open_read(tmp_path)?;
 
         f.read(&mut new_frame)?;
@@ -791,5 +812,57 @@ mod tests {
             let code: ErrorCode = i.into();
             assert!(check_code(code, ErrorTask::Read).is_some());
         }
+    }
+
+    #[test]
+    fn test_to() -> Result<()> {
+        assert_eq!(24234_i32, to!(24234_usize, ErrorTask::Write)?);
+
+        let big_number = 3_294_967_295_usize;
+        let expected: Result<i32> = Err(Error::OutOfRange {
+            name: "big_number",
+            task: ErrorTask::Write,
+            value: "3294967295".to_string(),
+            target: "i32",
+        });
+        assert_eq!(expected, to!(big_number, ErrorTask::Write));
+
+        let num_atoms: usize = 304;
+        let res: Result<u8, _> = to!(num_atoms, ErrorTask::Write);
+        assert_eq!(
+            format!("{}", res.unwrap_err()),
+            "Illegal num_atoms while writing trajectory: Failed to cast 304 to u8"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_write_outofrange_step() -> Result<(), Box<dyn std::error::Error>> {
+        let tempfile = NamedTempFile::new()?;
+        let tmp_path = tempfile.path();
+        let mut traj = XTCTrajectory::open_write(tmp_path)?;
+
+        let frame = Frame {
+            step: usize::MAX,
+            time: 0.0,
+            box_vector: [[0.0; 3]; 3],
+            coords: vec![[1.0; 3]],
+        };
+        let expected = Error::OutOfRange {
+            name: "frame.step",
+            value: usize::MAX.to_string(),
+            target: "i32",
+            task: ErrorTask::Write,
+        };
+
+        if let Err(e) = traj.write(&frame) {
+            print!("{:?}", e);
+            assert_eq!(expected, e);
+        } else {
+            panic!("Writing frame with step=usize::MAX should not succeed.")
+        }
+
+        Ok(())
     }
 }

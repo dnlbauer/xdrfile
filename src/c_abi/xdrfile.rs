@@ -6,21 +6,20 @@ pub struct XDRFILE {
     _unused: [u8; 0],
 }
 
-pub type BindgenTy1 = u32;
-pub const exdrOK: BindgenTy1 = 0;
-pub const exdrHEADER: BindgenTy1 = 1;
-pub const exdrSTRING: BindgenTy1 = 2;
-pub const exdrDOUBLE: BindgenTy1 = 3;
-pub const exdrINT: BindgenTy1 = 4;
-pub const exdrFLOAT: BindgenTy1 = 5;
-pub const exdrUINT: BindgenTy1 = 6;
-pub const exdr3DX: BindgenTy1 = 7;
-pub const exdrCLOSE: BindgenTy1 = 8;
-pub const exdrMAGIC: BindgenTy1 = 9;
-pub const exdrNOMEM: BindgenTy1 = 10;
-pub const exdrENDOFFILE: BindgenTy1 = 11;
-pub const exdrFILENOTFOUND: BindgenTy1 = 12;
-pub const exdrNR: BindgenTy1 = 13;
+pub const exdrOK: i32 = 0;
+pub const exdrHEADER: i32 = 1;
+pub const exdrSTRING: i32 = 2;
+pub const exdrDOUBLE: i32 = 3;
+pub const exdrINT: i32 = 4;
+pub const exdrFLOAT: i32 = 5;
+pub const exdrUINT: i32 = 6;
+pub const exdr3DX: i32 = 7;
+pub const exdrCLOSE: i32 = 8;
+pub const exdrMAGIC: i32 = 9;
+pub const exdrNOMEM: i32 = 10;
+pub const exdrENDOFFILE: i32 = 11;
+pub const exdrFILENOTFOUND: i32 = 12;
+pub const exdrNR: i32 = 13;
 
 extern "C" {
     pub static mut exdr_message: [*mut ::std::os::raw::c_char; 13usize];

@@ -8,25 +8,22 @@ use std::path::{Path, PathBuf};
 #[derive(Debug, Clone, PartialEq)]
 pub enum Error {
     /// An error code from the C API
-    CApiError {
-        code: ErrorCode,
-        task: ErrorTask,
-    },
+    CApiError { code: ErrorCode, task: ErrorTask },
     /// Passed in a frame of the wrong size
-    WrongSizeFrame {
-        expected: usize,
-        found: usize,
-    },
+    WrongSizeFrame { expected: usize, found: usize },
     /// C API failed to open a file (No return code provided)
-    CouldNotOpen {
-        path: PathBuf,
-        mode: FileMode,
-    },
+    CouldNotOpen { path: PathBuf, mode: FileMode },
     /// A path could not be converted to &OsStr
-    InvalidOsStr,
-    /// A path could not be converted to &CStr because it had a null byte
-    NullInStr(std::ffi::NulError),
+    InvalidOsStr(Option<std::ffi::NulError>),
+    /// Checking the number of atoms failed while reading a frame
     CouldNotCheckNAtoms(Box<Error>),
+    /// Error for an out-of-range numeric conversion
+    OutOfRange {
+        name: &'static str,
+        task: ErrorTask,
+        value: String,
+        target: &'static str,
+    },
 }
 
 impl Error {
@@ -60,10 +57,15 @@ impl Error {
 
 impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        use Error::*;
         match &self {
-            NullInStr(err) => Some(err),
-            CouldNotCheckNAtoms(err) => Some(err.as_ref()),
+            Error::InvalidOsStr(err) => {
+                if let Some(err) = err {
+                    Some(err)
+                } else {
+                    None
+                }
+            },
+            Error::CouldNotCheckNAtoms(err) => Some(err.as_ref()),
             _ => None,
         }
     }
@@ -73,12 +75,6 @@ impl From<(ErrorCode, ErrorTask)> for Error {
     fn from(value: (ErrorCode, ErrorTask)) -> Self {
         let (code, task) = value;
         Self::CApiError { code, task }
-    }
-}
-
-impl From<std::ffi::NulError> for Error {
-    fn from(err: std::ffi::NulError) -> Self {
-        Self::NullInStr(err)
     }
 }
 
@@ -104,28 +100,38 @@ impl From<(&Frame, usize)> for Error {
 
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        use Error::*;
-        match &self {
-            CApiError { code, task } => write!(
+        match self {
+            Error::CApiError { code, task } => write!(
                 f,
                 "Error while {task}: C API returned error code {code}",
                 task = task,
                 code = code
             ),
-            WrongSizeFrame { expected, found } => write!(
+            Error::WrongSizeFrame { expected, found } => write!(
                 f,
                 "Expected frame of size {:?}, found {:?}",
                 expected, found
             ),
-            CouldNotOpen { path, mode } => {
+            Error::CouldNotOpen { path, mode } => {
                 write!(f, "Could not open file at {:?} in mode {:?}", path, mode)
             }
-            InvalidOsStr => write!(f, "Paths must be valid unicode on this platform"),
-            NullInStr(_err) => write!(f, "Paths cannot include null bytes"),
-            CouldNotCheckNAtoms(_err) => write!(
+            Error::InvalidOsStr(_) => write!(f, "Cannot convert path to CString."),
+            Error::CouldNotCheckNAtoms(_) => {
+                write!(f, "Failed to read number of atoms in trajectory file")
+            }
+            Error::OutOfRange {
+                name,
+                task,
+                value,
+                target,
+            } => write!(
                 f,
-                "Failed to read number of atoms in trajectory file"
-            )
+                "Illegal {name} while {task}: Failed to cast {value} to {target}",
+                name = name,
+                task = task,
+                value = value,
+                target = target
+            ),
         }
     }
 }
@@ -147,13 +153,12 @@ pub enum ErrorTask {
 
 impl std::fmt::Display for ErrorTask {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        use ErrorTask::*;
         match &self {
-            ReadNumAtoms => write!(f, "reading atom number from trajectory"),
-            Read => write!(f, "reading trajectory"),
-            Write => write!(f, "writing trajectory"),
-            Flush => write!(f, "flushing trajectory"),
-            Seek => write!(f, "seeking in trajectory"),
+            ErrorTask::ReadNumAtoms => write!(f, "reading atom number from trajectory"),
+            ErrorTask::Read => write!(f, "reading trajectory"),
+            ErrorTask::Write => write!(f, "writing trajectory"),
+            ErrorTask::Flush => write!(f, "flushing trajectory"),
+            ErrorTask::Seek => write!(f, "seeking in trajectory"),
         }
     }
 }
@@ -190,7 +195,7 @@ pub enum ErrorCode {
     /// Failed to seek within file
     ExdrNr,
     /// Something unexpected happened
-    UnmatchedCode(c_abi::xdrfile::BindgenTy1),
+    UnmatchedCode(i32),
 }
 
 impl ErrorCode {
@@ -200,8 +205,8 @@ impl ErrorCode {
     }
 }
 
-impl From<c_abi::xdrfile::BindgenTy1> for ErrorCode {
-    fn from(code: c_abi::xdrfile::BindgenTy1) -> Self {
+impl From<i32> for ErrorCode {
+    fn from(code: i32) -> Self {
         match code {
             c_abi::xdrfile::exdrOK => Self::ExdrOk,
             c_abi::xdrfile::exdrHEADER => Self::ExdrHeader,
@@ -238,37 +243,34 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::ffi::CString;
-    use std::ffi::NulError;
 
     #[test]
     fn test_is_eof() {
-        use Error::CApiError;
-        let error = CApiError {
+        let error = Error::CApiError {
             code: c_abi::xdrfile::exdrENDOFFILE.into(),
             task: ErrorTask::Read,
         };
         assert!(error.is_eof());
 
-        let error = CApiError {
+        let error = Error::CApiError {
             code: ErrorCode::ExdrEndOfFile,
             task: ErrorTask::Read,
         };
         assert!(error.is_eof());
 
-        let error = CApiError {
+        let error = Error::CApiError {
             code: (c_abi::xdrfile::exdrENDOFFILE + 1).into(),
             task: ErrorTask::Read,
         };
         assert!(!error.is_eof());
 
-        let error = CApiError {
+        let error = Error::CApiError {
             code: 0.into(),
             task: ErrorTask::Read,
         };
         assert!(!error.is_eof());
 
-        let error = CApiError {
+        let error = Error::CApiError {
             code: 255.into(),
             task: ErrorTask::Read,
         };
@@ -283,12 +285,6 @@ mod tests {
 
     #[test]
     fn test_from_correct_type() {
-        let nul_err: NulError = CString::new(b"foo\0".to_vec()).unwrap_err();
-        let nul_err2: NulError = CString::new(b"foo\0".to_vec()).unwrap_err();
-        let err = Error::from(nul_err);
-        let expected = Error::NullInStr(nul_err2);
-        assert_eq!(expected, err);
-
         let code = 3.into();
         let task = ErrorTask::Read;
         let expected = Error::CApiError { code, task };
