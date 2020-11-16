@@ -85,7 +85,7 @@ use std::os::raw::{c_float, c_int};
 use std::path::{Path, PathBuf};
 
 /// File Mode for accessing trajectories.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Copy)]
 pub enum FileMode {
     Write,
     Append,
@@ -148,7 +148,6 @@ fn check_code(code: impl Into<ErrorCode>, task: ErrorTask) -> Option<Error> {
 /// A safe wrapper around the c implementation of an XDRFile
 struct XDRFile {
     xdrfile: *mut XDRFILE,
-    #[allow(dead_code)]
     filemode: FileMode,
     path: PathBuf,
 }
@@ -232,7 +231,6 @@ pub trait Trajectory {
 
     /// Get the number of atoms from the give trajectory
     fn get_num_atoms(&mut self) -> Result<usize>;
-
 }
 
 /// Handle to Read/Write XTC Trajectories
@@ -270,6 +268,14 @@ impl XTCTrajectory {
 
 impl Trajectory for XTCTrajectory {
     fn read(&mut self, frame: &mut Frame) -> Result<()> {
+        match self.handle.filemode {
+            FileMode::Read => Ok(()),
+            mode => Err(Error::WrongMode {
+                mode,
+                task: ErrorTask::Read,
+            }),
+        }?;
+
         let mut step: c_int = 0;
 
         let num_atoms = self
@@ -298,6 +304,14 @@ impl Trajectory for XTCTrajectory {
     }
 
     fn write(&mut self, frame: &Frame) -> Result<()> {
+        match self.handle.filemode {
+            FileMode::Append | FileMode::Write => Ok(()),
+            mode @ FileMode::Read => Err(Error::WrongMode {
+                mode,
+                task: ErrorTask::Write,
+            }),
+        }?;
+
         unsafe {
             let code = xdrfile_xtc::write_xtc(
                 self.handle.xdrfile,
@@ -317,6 +331,14 @@ impl Trajectory for XTCTrajectory {
     }
 
     fn flush(&mut self) -> Result<()> {
+        match self.handle.filemode {
+            FileMode::Append | FileMode::Write => Ok(()),
+            mode @ FileMode::Read => Err(Error::WrongMode {
+                mode,
+                task: ErrorTask::Flush,
+            }),
+        }?;
+
         unsafe {
             let code = xdr_seek::xdr_flush(self.handle.xdrfile);
             if let Some(err) = check_code(code, ErrorTask::Flush) {
@@ -396,6 +418,14 @@ impl TRRTrajectory {
 
 impl Trajectory for TRRTrajectory {
     fn read(&mut self, frame: &mut Frame) -> Result<()> {
+        match self.handle.filemode {
+            FileMode::Read => Ok(()),
+            mode => Err(Error::WrongMode {
+                mode,
+                task: ErrorTask::Read,
+            }),
+        }?;
+
         let mut step: c_int = 0;
         let mut lambda: c_float = 0.0;
 
@@ -427,6 +457,14 @@ impl Trajectory for TRRTrajectory {
     }
 
     fn write(&mut self, frame: &Frame) -> Result<()> {
+        match self.handle.filemode {
+            FileMode::Append | FileMode::Write => Ok(()),
+            mode @ FileMode::Read => Err(Error::WrongMode {
+                mode,
+                task: ErrorTask::Write,
+            }),
+        }?;
+
         unsafe {
             let code = xdrfile_trr::write_trr(
                 self.handle.xdrfile,
@@ -448,6 +486,14 @@ impl Trajectory for TRRTrajectory {
     }
 
     fn flush(&mut self) -> Result<()> {
+        match self.handle.filemode {
+            FileMode::Append | FileMode::Write => Ok(()),
+            mode @ FileMode::Read => Err(Error::WrongMode {
+                mode,
+                task: ErrorTask::Flush,
+            }),
+        }?;
+
         unsafe {
             let code = xdr_seek::xdr_flush(self.handle.xdrfile);
             if let Some(err) = check_code(code, ErrorTask::Flush) {
@@ -500,6 +546,36 @@ mod tests {
     use std::io::Seek;
     use std::io::Write;
     use tempfile::NamedTempFile;
+
+    #[test]
+    fn test_read_writemode_xtc() -> Result<(), Box<dyn std::error::Error>> {
+        let tempfile = NamedTempFile::new().expect("Could not create temporary file");
+        let tmp_path = tempfile.path();
+
+        let natoms = 2;
+        let frame = Frame {
+            step: 5,
+            time: 2.0,
+            box_vector: [[1.0, 2.0, 3.0], [2.0, 1.0, 3.0], [3.0, 2.0, 1.0]],
+            coords: vec![[1.0, 1.0, 1.0], [1.0, 1.0, 1.0]],
+        };
+        let mut f = XTCTrajectory::open_write(&tmp_path)?;
+        f.write(&frame)?;
+        f.flush()?;
+
+        f.seek(SeekFrom::Start(0))?;
+
+        let mut new_frame = Frame::with_len(natoms);
+
+        let read_status = f.read(&mut new_frame);
+        let expected = Error::WrongMode {
+            mode: FileMode::Write,
+            task: ErrorTask::Read,
+        };
+
+        assert_eq!(Err(expected), read_status);
+        Ok(())
+    }
 
     #[test]
     fn test_read_write_xtc() -> Result<()> {
