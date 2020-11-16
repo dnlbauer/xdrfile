@@ -1,4 +1,4 @@
-[![Build Status](https://travis-ci.com/danijoo/xdrfile.svg?branch=master)](https://travis-ci.com/danijoo/xdrfile) [![crates.io](https://img.shields.io/badge/crates.io-orange.svg?longCache=true)](https://www.crates.io/crates/xdrfile) [![Latest Documentation](https://docs.rs/xdrfile/badge.svg)](https://docs.rs/xdrfile)
+[![Build Status](https://travis-ci.org/danijoo/xdrfile.svg?branch=master)](https://travis-ci.org/danijoo/xdrfile) [![crates.io](https://img.shields.io/badge/crates.io-orange.svg?longCache=true)](https://www.crates.io/crates/xdrfile) [![Latest Documentation](https://docs.rs/xdrfile/badge.svg)](https://docs.rs/xdrfile)
 
 # xdrfile
 Read and write xdr trajectory files in .xtc and .trr file format
