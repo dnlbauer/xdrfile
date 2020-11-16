@@ -135,7 +135,7 @@ macro_rules! to {
 /// `code` should be an integer return code returned from the C API.
 /// If `code` indicates the function returned successfully, None is returned;
 /// otherwise, the code is converted into the appropriate `Error`.
-pub fn check_code(code: impl Into<ErrorCode>, task: ErrorTask) -> Option<Error> {
+fn check_code(code: impl Into<ErrorCode>, task: ErrorTask) -> Option<Error> {
     let code: ErrorCode = code.into();
     if let ErrorCode::ExdrOk = code {
         None
