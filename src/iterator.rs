@@ -32,11 +32,10 @@ impl IntoIterator for TRRTrajectory {
     }
 }
 
-/*
-Iterator for trajectories. This iterator yields a Result<Frame, Error>
-for each frame in the trajectory file and stops with yielding None once the
-trajectory is finished. Also yields None after the first occurence of an error
-*/
+/// Iterator for trajectories.
+/// This iterator yields a Result<Frame, Error> for each frame in the
+/// trajectory file and stops with yielding None once the trajectory is
+/// EOF. Also yields None after the first occurrence of an error
 pub struct TrajectoryIterator<T> {
     trajectory: T,
     item: Rc<Frame>,

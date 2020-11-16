@@ -84,6 +84,7 @@ use std::io::SeekFrom;
 use std::os::raw::{c_float, c_int};
 use std::path::{Path, PathBuf};
 
+/// File Mode for accessing trajectories.
 #[derive(Debug, Clone, PartialEq)]
 pub enum FileMode {
     Write,
@@ -233,7 +234,7 @@ pub trait Trajectory {
     fn get_num_atoms(&mut self) -> Result<usize>;
 }
 
-/// Read/Write XTC Trajectories
+/// Handle to Read/Write XTC Trajectories
 pub struct XTCTrajectory {
     handle: XDRFile,
     precision: Cell<c_float>, // internal mutability required for read method
@@ -361,7 +362,7 @@ impl io::Seek for XTCTrajectory {
     }
 }
 
-/// Read/Write TRR Trajectories
+/// Handle to Read/Write TRR Trajectories
 pub struct TRRTrajectory {
     handle: XDRFile,
     num_atoms: Lazy<Result<usize>>,
