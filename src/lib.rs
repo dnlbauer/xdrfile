@@ -105,8 +105,11 @@ impl FileMode {
 }
 
 fn path_to_cstring(path: impl AsRef<Path>) -> Result<CString> {
-    let s = path.as_ref().to_str().ok_or(Error::InvalidOsStr)?;
-    Ok(CString::new(s)?)
+    if let Some(s) = path.as_ref().to_str() {
+        CString::new(s).map_err(|e| Error::InvalidOsStr(Some(e)))
+    } else {
+        Err(Error::InvalidOsStr(None))
+    }
 }
 
 fn to<I, O>(value: I, task: ErrorTask, name: &'static str) -> Result<O>
@@ -621,21 +624,28 @@ mod tests {
 
     #[test]
     fn test_path_to_cstring() -> Result<(), Box<dyn std::error::Error>> {
-        let result_invalid = path_to_cstring(PathBuf::from("invalid/\0path"));
-
-        if let Err(err) = result_invalid {
-            match err {
-                Error::NullInStr(_) => (),
-                Error::InvalidOsStr => (),
-                _ => panic!("Improper error type for path_to_cstring"),
+        // A valid string should convert to CString successfully
+        let valid_result = path_to_cstring(PathBuf::from("test"));
+        match valid_result {
+            Ok(s) => {
+                assert_eq!(s, CString::new("test")?);
             }
-        } else {
-            panic!("path_to_cstring should return Err if there are null bytes");
+            Err(_) => panic!("Valid Path failed to convert to CString.")
         }
 
-        let result_valid = path_to_cstring("valid/path");
-        assert_eq!(result_valid, Ok(CString::new("valid/path")?));
-
+        // \0 in path should result in an InvalidOsStr(Some(NulError)) 
+        let result = path_to_cstring(PathBuf::from("invalid/\0path"));
+        match result {
+            Ok(_) => panic!("Cstring conversion did not fail"),
+            Err(e) => {
+                match e {
+                    Error::InvalidOsStr(opt) => {
+                        assert!(opt.is_some())
+                    }
+                    _ => panic!("Wrong error type. (This should never happend).")
+                }
+            }
+        }
         Ok(())
     }
 

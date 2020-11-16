@@ -14,9 +14,7 @@ pub enum Error {
     /// C API failed to open a file (No return code provided)
     CouldNotOpen { path: PathBuf, mode: FileMode },
     /// A path could not be converted to &OsStr
-    InvalidOsStr,
-    /// A path could not be converted to &CStr because it had a null byte
-    NullInStr(std::ffi::NulError),
+    InvalidOsStr(Option<std::ffi::NulError>),
     /// Checking the number of atoms failed while reading a frame
     CouldNotCheckNAtoms(Box<Error>),
     /// Error for an out-of-range numeric conversion
@@ -61,7 +59,13 @@ impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         use Error::*;
         match &self {
-            NullInStr(err) => Some(err),
+            InvalidOsStr(err) => {
+                if let Some(err) = err {
+                    Some(err)
+                } else {
+                    None
+                }
+            },
             CouldNotCheckNAtoms(err) => Some(err.as_ref()),
             _ => None,
         }
@@ -72,12 +76,6 @@ impl From<(ErrorCode, ErrorTask)> for Error {
     fn from(value: (ErrorCode, ErrorTask)) -> Self {
         let (code, task) = value;
         Self::CApiError { code, task }
-    }
-}
-
-impl From<std::ffi::NulError> for Error {
-    fn from(err: std::ffi::NulError) -> Self {
-        Self::NullInStr(err)
     }
 }
 
@@ -119,9 +117,8 @@ impl std::fmt::Display for Error {
             CouldNotOpen { path, mode } => {
                 write!(f, "Could not open file at {:?} in mode {:?}", path, mode)
             }
-            InvalidOsStr => write!(f, "Paths must be valid unicode on this platform"),
-            NullInStr(_err) => write!(f, "Paths cannot include null bytes"),
-            CouldNotCheckNAtoms(_err) => {
+            InvalidOsStr(_) => write!(f, "Cannot convert path to CString."),
+            CouldNotCheckNAtoms(_) => {
                 write!(f, "Failed to read number of atoms in trajectory file")
             }
             OutOfRange {
@@ -249,8 +246,6 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::ffi::CString;
-    use std::ffi::NulError;
 
     #[test]
     fn test_is_eof() {
@@ -294,12 +289,6 @@ mod tests {
 
     #[test]
     fn test_from_correct_type() {
-        let nul_err: NulError = CString::new(b"foo\0".to_vec()).unwrap_err();
-        let nul_err2: NulError = CString::new(b"foo\0".to_vec()).unwrap_err();
-        let err = Error::from(nul_err);
-        let expected = Error::NullInStr(nul_err2);
-        assert_eq!(expected, err);
-
         let code = 3.into();
         let task = ErrorTask::Read;
         let expected = Error::CApiError { code, task };
