@@ -57,16 +57,15 @@ impl Error {
 
 impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        use Error::*;
         match &self {
-            InvalidOsStr(err) => {
+            Error::InvalidOsStr(err) => {
                 if let Some(err) = err {
                     Some(err)
                 } else {
                     None
                 }
             },
-            CouldNotCheckNAtoms(err) => Some(err.as_ref()),
+            Error::CouldNotCheckNAtoms(err) => Some(err.as_ref()),
             _ => None,
         }
     }
@@ -101,27 +100,26 @@ impl From<(&Frame, usize)> for Error {
 
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        use Error::*;
         match self {
-            CApiError { code, task } => write!(
+            Error::CApiError { code, task } => write!(
                 f,
                 "Error while {task}: C API returned error code {code}",
                 task = task,
                 code = code
             ),
-            WrongSizeFrame { expected, found } => write!(
+            Error::WrongSizeFrame { expected, found } => write!(
                 f,
                 "Expected frame of size {:?}, found {:?}",
                 expected, found
             ),
-            CouldNotOpen { path, mode } => {
+            Error::CouldNotOpen { path, mode } => {
                 write!(f, "Could not open file at {:?} in mode {:?}", path, mode)
             }
-            InvalidOsStr(_) => write!(f, "Cannot convert path to CString."),
-            CouldNotCheckNAtoms(_) => {
+            Error::InvalidOsStr(_) => write!(f, "Cannot convert path to CString."),
+            Error::CouldNotCheckNAtoms(_) => {
                 write!(f, "Failed to read number of atoms in trajectory file")
             }
-            OutOfRange {
+            Error::OutOfRange {
                 name,
                 task,
                 value,
@@ -155,13 +153,12 @@ pub enum ErrorTask {
 
 impl std::fmt::Display for ErrorTask {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        use ErrorTask::*;
         match &self {
-            ReadNumAtoms => write!(f, "reading atom number from trajectory"),
-            Read => write!(f, "reading trajectory"),
-            Write => write!(f, "writing trajectory"),
-            Flush => write!(f, "flushing trajectory"),
-            Seek => write!(f, "seeking in trajectory"),
+            ErrorTask::ReadNumAtoms => write!(f, "reading atom number from trajectory"),
+            ErrorTask::Read => write!(f, "reading trajectory"),
+            ErrorTask::Write => write!(f, "writing trajectory"),
+            ErrorTask::Flush => write!(f, "flushing trajectory"),
+            ErrorTask::Seek => write!(f, "seeking in trajectory"),
         }
     }
 }
@@ -249,32 +246,31 @@ mod tests {
 
     #[test]
     fn test_is_eof() {
-        use Error::CApiError;
-        let error = CApiError {
+        let error = Error::CApiError {
             code: c_abi::xdrfile::exdrENDOFFILE.into(),
             task: ErrorTask::Read,
         };
         assert!(error.is_eof());
 
-        let error = CApiError {
+        let error = Error::CApiError {
             code: ErrorCode::ExdrEndOfFile,
             task: ErrorTask::Read,
         };
         assert!(error.is_eof());
 
-        let error = CApiError {
+        let error = Error::CApiError {
             code: (c_abi::xdrfile::exdrENDOFFILE + 1).into(),
             task: ErrorTask::Read,
         };
         assert!(!error.is_eof());
 
-        let error = CApiError {
+        let error = Error::CApiError {
             code: 0.into(),
             task: ErrorTask::Read,
         };
         assert!(!error.is_eof());
 
-        let error = CApiError {
+        let error = Error::CApiError {
             code: 255.into(),
             task: ErrorTask::Read,
         };
