@@ -1,10 +1,13 @@
 [package]
 name = "xdrfile"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["Daniel Bauer <bauer@cbs.tu-darmstadt.de>"]
 license = "LGPL-3.0-only"
 edition = "2018"
 description = "Wrapper around the gromacs libxdrfile library. Can be used to read and write gromacs trajectories in xtc and trr format."
+readme = "README.md"
+categories = ["external-ffi-bindings", "encoding", "science"]
+keywords = ["bioinformatics", "molecular-dynamics", "GROMACS", "trajectory"]
 build = "build.rs"
 
 [dependencies]
