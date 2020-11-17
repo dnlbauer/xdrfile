@@ -26,7 +26,7 @@
 //!     assert_eq!(frame.step, 1);
 //!     assert_eq!(frame.len(), num_atoms);
 //!
-//!     let first_atom_coords = frame.coords[0];
+//!     let first_atom_coords = frame[0];
 //!     assert_eq!(first_atom_coords, [-0.8901, 0.4127, -0.055499997]);
 //!
 //!     Ok(())
@@ -232,6 +232,7 @@ pub trait Trajectory {
 
     /// Get the number of atoms from the give trajectory
     fn get_num_atoms(&mut self) -> Result<usize>;
+
 }
 
 /// Handle to Read/Write XTC Trajectories
