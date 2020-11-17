@@ -97,4 +97,19 @@ mod tests {
         let frame = Frame::with_len(10);
         assert_eq!(frame.len(), 10);
     }
+
+    #[test]
+    fn test_filter_coords() {
+        let mut frame = Frame {
+            step: 0,
+            time: 0.0,
+            box_vector: [[0.0; 3]; 3],
+            coords: vec![[0.0; 3], [1.0; 3], [2.0; 3]]
+        };
+
+        frame.filter_coords(&[1]);
+        for i in 0..3 {
+            assert_approx_eq!(frame.coords[0][i], 1.0);
+        }
+    }
 }
