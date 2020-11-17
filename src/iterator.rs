@@ -49,7 +49,7 @@ impl<T: Trajectory> TrajectoryIterator<T> {
         // It's OK to do this every frame because the result is cached by Trajectory
         let num_atoms = match &self.trajectory.get_num_atoms() {
             &Ok(n) => n,
-            Err(e) => Err(Error::CouldNotCheckNAtoms(Box::new(e.clone())))?,
+            Err(e) => return Err(Error::CouldNotCheckNAtoms(Box::new(e.clone()))),
         };
 
         // Reuse old frame

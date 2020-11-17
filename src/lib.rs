@@ -175,7 +175,7 @@ impl XDRFile {
                 })
             } else {
                 // Something went wrong. But the C api does not tell us what
-                Err((path, filemode))?
+                Err((path, filemode).into())
             }
         }
     }
@@ -275,8 +275,8 @@ impl Trajectory for XTCTrajectory {
             .get_num_atoms()
             .map_err(|e| Error::CouldNotCheckNAtoms(Box::new(e)))?;
         if num_atoms != frame.coords.len() {
-            Err((&*frame, num_atoms))?;
-        };
+            return Err((&*frame, num_atoms).into());
+        }
 
         unsafe {
             let code = xdrfile_xtc::read_xtc(
@@ -402,7 +402,7 @@ impl Trajectory for TRRTrajectory {
             .get_num_atoms()
             .map_err(|e| Error::CouldNotCheckNAtoms(Box::new(e)))?;
         if num_atoms != frame.coords.len() {
-            Err((&*frame, num_atoms))?;
+            return Err((&*frame, num_atoms).into());
         }
 
         unsafe {
@@ -631,21 +631,17 @@ mod tests {
             Ok(s) => {
                 assert_eq!(s, CString::new("test")?);
             }
-            Err(_) => panic!("Valid Path failed to convert to CString.")
+            Err(_) => panic!("Valid Path failed to convert to CString."),
         }
 
-        // \0 in path should result in an InvalidOsStr(Some(NulError)) 
+        // \0 in path should result in an InvalidOsStr(Some(NulError))
         let result = path_to_cstring(PathBuf::from("invalid/\0path"));
         match result {
             Ok(_) => panic!("Cstring conversion did not fail"),
-            Err(e) => {
-                match e {
-                    Error::InvalidOsStr(opt) => {
-                        assert!(opt.is_some())
-                    }
-                    _ => panic!("Wrong error type. (This should never happend).")
-                }
-            }
+            Err(e) => match e {
+                Error::InvalidOsStr(opt) => assert!(opt.is_some()),
+                _ => panic!("Wrong error type. (This should never happend)."),
+            },
         }
         Ok(())
     }
