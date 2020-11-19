@@ -4,6 +4,6 @@ rust:
   - beta
   - nightly
 git:
-  depth: 10
+  depth: 50
 after_success:
   ./.travis_bench.sh
