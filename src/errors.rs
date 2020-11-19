@@ -24,11 +24,6 @@ pub enum Error {
         value: String,
         target: &'static str,
     },
-    /// Attempted to perform an unsupported operation given the file mode
-    WrongMode {
-        mode: ErrorFileMode,
-        task: ErrorTask,
-    },
 }
 
 impl Error {
@@ -137,12 +132,6 @@ impl std::fmt::Display for Error {
                 value = value,
                 target = target
             ),
-            Error::WrongMode { mode, task } => write!(
-                f,
-                "{task} is impossible with file mode {mode:?}",
-                mode = mode,
-                task = task.uppercase_first(),
-            ),
         }
     }
 }
@@ -160,14 +149,6 @@ pub enum ErrorTask {
     Flush,
     /// A seek operation was being run on a file
     Seek,
-}
-
-impl ErrorTask {
-    fn uppercase_first(&self) -> String {
-        let mut s = format!("{}", self);
-        &mut s[0..1].make_ascii_uppercase();
-        s
-    }
 }
 
 impl std::fmt::Display for ErrorTask {
