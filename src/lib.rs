@@ -502,14 +502,15 @@ mod tests {
     use tempfile::NamedTempFile;
 
     #[test]
-    fn test_read_write_xtc() -> Result<()> {
+    fn test_write_append_read_xtc() -> Result<()> {
         let tempfile = NamedTempFile::new().expect("Could not create temporary file");
         let tmp_path = tempfile.path();
-
         let natoms = 2;
+
+        // write frame 1
         let frame = Frame {
-            step: 5,
-            time: 2.0,
+            step: 1,
+            time: 1.0,
             box_vector: [[1.0, 2.0, 3.0], [2.0, 1.0, 3.0], [3.0, 2.0, 1.0]],
             coords: vec![[1.0, 1.0, 1.0], [1.0, 1.0, 1.0]],
         };
@@ -521,11 +522,28 @@ mod tests {
         }
         f.flush()?;
 
+        // append frame 2
+        let frame2 = Frame {
+            step: 2,
+            time: 2.0,
+            box_vector: [[1.0, 2.0, 3.0], [2.0, 1.0, 3.0], [3.0, 2.0, 1.0]],
+            coords: vec![[1.0, 1.0, 1.0], [1.0, 1.0, 1.0]],
+        };
+        let mut f = XTCTrajectory::open_append(&tmp_path)?;
+        let write_status = f.write(&frame2);
+        match write_status {
+            Err(_) => panic!("Failed"),
+            Ok(()) => {}
+        }
+        f.flush()?;
+
+        // open trj for read
         let mut new_frame = Frame::with_len(natoms);
         let mut f = XTCTrajectory::open_read(tmp_path)?;
         let num_atoms = f.get_num_atoms()?;
         assert_eq!(num_atoms, natoms);
 
+        // check frame 1 ...
         let read_status = f.read(&mut new_frame);
         match read_status {
             Err(e) => assert!(false, "{:?}", e),
@@ -537,22 +555,36 @@ mod tests {
         assert_approx_eq!(new_frame.time, frame.time);
         assert_eq!(new_frame.box_vector, frame.box_vector);
         assert_eq!(new_frame.coords, frame.coords);
+
+        // and check frame 1 ...
+        let read_status = f.read(&mut new_frame);
+        match read_status {
+            Err(e) => assert!(false, "{:?}", e),
+            Ok(()) => {}
+        }
+
+        assert_eq!(new_frame.len(), frame2.len());
+        assert_eq!(new_frame.step, frame2.step);
+        assert_approx_eq!(new_frame.time, frame2.time);
+        assert_eq!(new_frame.box_vector, frame2.box_vector);
+        assert_eq!(new_frame.coords, frame2.coords);
         Ok(())
     }
 
     #[test]
-    fn test_read_write_trr() -> Result<()> {
+    fn test_write_append_read_trr() -> Result<()> {
         let tempfile = NamedTempFile::new().expect("Could not create temporary file");
         let tmp_path = tempfile.path();
-
         let natoms = 2;
+
+        // write frame 1
         let frame = Frame {
-            step: 5,
-            time: 2.0,
+            step: 1,
+            time: 1.0,
             box_vector: [[1.0, 2.0, 3.0], [2.0, 1.0, 3.0], [3.0, 2.0, 1.0]],
             coords: vec![[1.0, 1.0, 1.0], [1.0, 1.0, 1.0]],
         };
-        let mut f = TRRTrajectory::open_write(tmp_path)?;
+        let mut f = TRRTrajectory::open_write(&tmp_path)?;
         let write_status = f.write(&frame);
         match write_status {
             Err(_) => panic!("Failed"),
@@ -560,11 +592,28 @@ mod tests {
         }
         f.flush()?;
 
+        // append frame 2
+        let frame2 = Frame {
+            step: 2,
+            time: 2.0,
+            box_vector: [[1.0, 2.0, 3.0], [2.0, 1.0, 3.0], [3.0, 2.0, 1.0]],
+            coords: vec![[1.0, 1.0, 1.0], [1.0, 1.0, 1.0]],
+        };
+        let mut f = TRRTrajectory::open_append(&tmp_path)?;
+        let write_status = f.write(&frame2);
+        match write_status {
+            Err(_) => panic!("Failed"),
+            Ok(()) => {}
+        }
+        f.flush()?;
+
+        // open trj for read
         let mut new_frame = Frame::with_len(natoms);
         let mut f = TRRTrajectory::open_read(tmp_path)?;
-        // let num_atoms = f.get_num_atoms()?;
-        // assert_eq!(num_atoms, natoms);
+        let num_atoms = f.get_num_atoms()?;
+        assert_eq!(num_atoms, natoms);
 
+        // check frame 1 ...
         let read_status = f.read(&mut new_frame);
         match read_status {
             Err(e) => assert!(false, "{:?}", e),
@@ -573,9 +622,22 @@ mod tests {
 
         assert_eq!(new_frame.len(), frame.len());
         assert_eq!(new_frame.step, frame.step);
-        assert_eq!(new_frame.time, frame.time);
+        assert_approx_eq!(new_frame.time, frame.time);
         assert_eq!(new_frame.box_vector, frame.box_vector);
         assert_eq!(new_frame.coords, frame.coords);
+
+        // and check frame 1 ...
+        let read_status = f.read(&mut new_frame);
+        match read_status {
+            Err(e) => assert!(false, "{:?}", e),
+            Ok(()) => {}
+        }
+
+        assert_eq!(new_frame.len(), frame2.len());
+        assert_eq!(new_frame.step, frame2.step);
+        assert_approx_eq!(new_frame.time, frame2.time);
+        assert_eq!(new_frame.box_vector, frame2.box_vector);
+        assert_eq!(new_frame.coords, frame2.coords);
         Ok(())
     }
 
