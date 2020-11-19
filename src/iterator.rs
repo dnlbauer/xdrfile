@@ -1,7 +1,7 @@
 use crate::*;
 use std::rc::Rc;
 
-fn into_iter_inner<T: Trajectory>(mut traj: T) -> TrajectoryIterator<T> {
+fn into_iter_inner<T: TrajectoryReader>(mut traj: T) -> TrajectoryIterator<T> {
     let num_atoms = traj.get_num_atoms();
     let frame = match &num_atoms {
         Ok(num_atoms) => Frame::with_len(*num_atoms),
@@ -14,18 +14,18 @@ fn into_iter_inner<T: Trajectory>(mut traj: T) -> TrajectoryIterator<T> {
     }
 }
 
-impl IntoIterator for XTCTrajectory {
+impl<R: filemode::ReaderMode> IntoIterator for XtcTrajectory<R> {
     type Item = Result<Rc<Frame>>;
-    type IntoIter = TrajectoryIterator<XTCTrajectory>;
+    type IntoIter = TrajectoryIterator<Self>;
 
     fn into_iter(self) -> Self::IntoIter {
         into_iter_inner(self)
     }
 }
 
-impl IntoIterator for TRRTrajectory {
+impl<R: filemode::ReaderMode> IntoIterator for TrrTrajectory<R> {
     type Item = Result<Rc<Frame>>;
-    type IntoIter = TrajectoryIterator<TRRTrajectory>;
+    type IntoIter = TrajectoryIterator<Self>;
 
     fn into_iter(self) -> Self::IntoIter {
         into_iter_inner(self)
@@ -42,7 +42,7 @@ pub struct TrajectoryIterator<T> {
     has_error: bool,
 }
 
-impl<T: Trajectory> TrajectoryIterator<T> {
+impl<T: TrajectoryReader> TrajectoryIterator<T> {
     /// Inner function for `next()`  to seperate error handling from iteration logic
     fn next_inner(&mut self) -> <Self as Iterator>::Item {
         // If we couldn't read the number of frames when we called into_iter, return that error now
@@ -69,7 +69,7 @@ impl<T: Trajectory> TrajectoryIterator<T> {
 
 impl<T> Iterator for TrajectoryIterator<T>
 where
-    T: Trajectory,
+    T: TrajectoryReader,
 {
     type Item = Result<Rc<Frame>>;
 
@@ -95,7 +95,7 @@ mod tests {
 
     #[test]
     pub fn test_xtc_trajectory_iterator() -> Result<()> {
-        let traj = XTCTrajectory::open_read("tests/1l2y.xtc")?;
+        let traj = XtcTrajectory::open_read("tests/1l2y.xtc")?;
         let frames: Result<Vec<Rc<Frame>>> = traj.into_iter().collect();
         let frames = frames?;
         assert!(frames.len() == 38);
@@ -106,7 +106,7 @@ mod tests {
 
     #[test]
     pub fn test_trr_trajectory_iterator() -> Result<()> {
-        let traj = TRRTrajectory::open_read("tests/1l2y.trr")?;
+        let traj = TrrTrajectory::open_read("tests/1l2y.trr")?;
         let frames: Result<Vec<Rc<Frame>>> = traj.into_iter().collect();
         let frames = frames?;
         assert!(frames.len() == 38);

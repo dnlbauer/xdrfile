@@ -1,5 +1,5 @@
 use crate::c_abi;
-use crate::FileMode;
+use crate::filemode;
 use crate::Frame;
 use std::error::Error as StdError;
 use std::path::{Path, PathBuf};
@@ -12,7 +12,7 @@ pub enum Error {
     /// Passed in a frame of the wrong size
     WrongSizeFrame { expected: usize, found: usize },
     /// C API failed to open a file (No return code provided)
-    CouldNotOpen { path: PathBuf, mode: FileMode },
+    CouldNotOpen { path: PathBuf, mode: ErrorFileMode },
     /// A path could not be converted to &OsStr
     InvalidOsStr(Option<std::ffi::NulError>),
     /// Checking the number of atoms failed while reading a frame
@@ -78,12 +78,12 @@ impl From<(ErrorCode, ErrorTask)> for Error {
     }
 }
 
-impl From<(&Path, FileMode)> for Error {
-    fn from(value: (&Path, FileMode)) -> Self {
+impl<M: filemode::FileMode> From<(&Path, M)> for Error {
+    fn from(value: (&Path, M)) -> Self {
         let (path, mode) = value;
         Error::CouldNotOpen {
             path: path.to_owned(),
-            mode,
+            mode: mode.into(),
         }
     }
 }
@@ -237,6 +237,14 @@ impl std::fmt::Display for ErrorCode {
     }
 }
 
+/// Allow file modes to be represented as errors without a generic error type
+#[derive(Debug, Clone, PartialEq, Copy)]
+pub enum ErrorFileMode {
+    Read,
+    Write,
+    Append,
+}
+
 /// `Result` type for errors in the `xdrfile` crate
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -278,7 +286,7 @@ mod tests {
 
         let error = Error::CouldNotOpen {
             path: PathBuf::from("not/a/file"),
-            mode: FileMode::Read,
+            mode: ErrorFileMode::Read,
         };
         assert!(!error.is_eof());
     }
@@ -292,10 +300,10 @@ mod tests {
         assert_eq!(expected, err);
 
         let path = Path::new(".");
-        let mode = FileMode::Read;
+        let mode = filemode::Read;
         let expected = Error::CouldNotOpen {
             path: path.to_path_buf(),
-            mode: mode.to_owned(),
+            mode: ErrorFileMode::Read,
         };
         let err = Error::from((path, mode));
         assert_eq!(expected, err);
