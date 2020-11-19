@@ -1,7 +1,18 @@
 use crate::errors::ErrorFileMode;
 
+mod private {
+    /// Prevent users from implementing FileMode on their own types
+    ///
+    /// https://rust-lang.github.io/api-guidelines/future-proofing.html#sealed-traits-protect-against-downstream-implementations-c-sealed
+    pub trait Sealed {}
+
+    impl Sealed for super::Read {}
+    impl Sealed for super::Write {}
+    impl Sealed for super::Append {}
+}
+
 /// Trait for all file modes
-pub trait FileMode: Default + Into<ErrorFileMode> {
+pub trait FileMode: Default + Into<ErrorFileMode> + private::Sealed {
     /// Get a CStr slice corresponding to the file mode
     fn to_cstr() -> &'static std::ffi::CStr;
 }
@@ -33,9 +44,9 @@ impl FileMode for Append {
 }
 
 /// Trait for modes that can read (read, append)
-pub trait ReaderMode: FileMode {}
+pub trait ReaderMode: FileMode + private::Sealed {}
 /// Trait for modes that can write (write, append)
-pub trait WriterMode: FileMode {}
+pub trait WriterMode: FileMode + private::Sealed {}
 impl ReaderMode for Read {}
 impl ReaderMode for Append {}
 impl WriterMode for Append {}
