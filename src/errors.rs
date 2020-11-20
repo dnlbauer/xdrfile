@@ -78,7 +78,7 @@ impl From<(ErrorCode, ErrorTask)> for Error {
     }
 }
 
-impl<M: filemode::FileMode> From<(&Path, M)> for Error {
+impl<M: filemode::FileMode + Into<ErrorFileMode>> From<(&Path, M)> for Error {
     fn from(value: (&Path, M)) -> Self {
         let (path, mode) = value;
         Error::CouldNotOpen {

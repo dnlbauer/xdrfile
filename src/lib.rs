@@ -135,7 +135,7 @@ struct XdrFile<M: FileMode> {
     path: PathBuf,
 }
 
-impl<M: FileMode> XdrFile<M> {
+impl<M: FileMode + Default + Into<ErrorFileMode>> XdrFile<M> {
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref();
         unsafe {
@@ -226,7 +226,7 @@ pub struct XtcTrajectory<M: FileMode> {
     num_atoms: Lazy<Result<usize>>,
 }
 
-impl<M: FileMode> XtcTrajectory<M> {
+impl<M: FileMode + Default + Into<ErrorFileMode>> XtcTrajectory<M> {
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
         let xdr = XdrFile::open(path)?;
         Ok(Self {
@@ -395,7 +395,7 @@ pub struct TrrTrajectory<M: FileMode> {
     num_atoms: Lazy<Result<usize>>,
 }
 
-impl<M: FileMode> TrrTrajectory<M> {
+impl<M: FileMode + Default + Into<ErrorFileMode>> TrrTrajectory<M> {
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
         let xdr = XdrFile::open(path)?;
         Ok(Self {

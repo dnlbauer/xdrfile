@@ -12,9 +12,25 @@ mod private {
 }
 
 /// Trait for all file modes
-pub trait FileMode: Default + Into<ErrorFileMode> + private::Sealed {
+///
+/// FileMode is object safe:
+/// ```
+/// # use xdrfile::{FileMode, Read, Write, Append};
+/// let trait_obj: Box<dyn FileMode> = Box::new(Read);
+/// ```
+pub trait FileMode: private::Sealed {
+    fn as_bytes_with_null() -> &'static [u8]
+    where
+        Self: Sized;
+
     /// Get a CStr slice corresponding to the file mode
-    fn to_cstr() -> &'static std::ffi::CStr;
+    fn to_cstr() -> &'static std::ffi::CStr
+    where
+        Self: Sized,
+    {
+        std::ffi::CStr::from_bytes_with_nul(Self::as_bytes_with_null())
+            .expect("CStr::from_bytes_with_nul failed")
+    }
 }
 
 /// The read-only mode
@@ -28,18 +44,18 @@ pub struct Write;
 pub struct Append;
 
 impl FileMode for Read {
-    fn to_cstr() -> &'static std::ffi::CStr {
-        std::ffi::CStr::from_bytes_with_nul(b"r\0").expect("CStr::from_bytes_with_nul failed")
+    fn as_bytes_with_null() -> &'static [u8] {
+        b"r\0"
     }
 }
 impl FileMode for Write {
-    fn to_cstr() -> &'static std::ffi::CStr {
-        std::ffi::CStr::from_bytes_with_nul(b"w\0").expect("CStr::from_bytes_with_nul failed")
+    fn as_bytes_with_null() -> &'static [u8] {
+        b"w\0"
     }
 }
 impl FileMode for Append {
-    fn to_cstr() -> &'static std::ffi::CStr {
-        std::ffi::CStr::from_bytes_with_nul(b"a\0").expect("CStr::from_bytes_with_nul failed")
+    fn as_bytes_with_null() -> &'static [u8] {
+        b"a\0"
     }
 }
 
