@@ -245,6 +245,24 @@ pub enum ErrorFileMode {
     Append,
 }
 
+impl From<filemode::Read> for ErrorFileMode {
+    fn from(_: filemode::Read) -> Self {
+        Self::Read
+    }
+}
+
+impl From<filemode::Write> for ErrorFileMode {
+    fn from(_: filemode::Write) -> Self {
+        Self::Write
+    }
+}
+
+impl From<filemode::Append> for ErrorFileMode {
+    fn from(_: filemode::Append) -> Self {
+        Self::Append
+    }
+}
+
 /// `Result` type for errors in the `xdrfile` crate
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 

@@ -1,5 +1,3 @@
-use crate::errors::ErrorFileMode;
-
 mod private {
     /// Prevent users from implementing FileMode on their own types
     ///
@@ -56,23 +54,5 @@ impl FileMode for Write {
 impl FileMode for Append {
     fn as_bytes_with_null() -> &'static [u8] {
         b"a\0"
-    }
-}
-
-impl From<Read> for ErrorFileMode {
-    fn from(_: Read) -> Self {
-        Self::Read
-    }
-}
-
-impl From<Write> for ErrorFileMode {
-    fn from(_: Write) -> Self {
-        Self::Write
-    }
-}
-
-impl From<Append> for ErrorFileMode {
-    fn from(_: Append) -> Self {
-        Self::Append
     }
 }
