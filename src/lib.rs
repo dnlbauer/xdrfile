@@ -240,35 +240,12 @@ impl<M: FileMode> XtcTrajectory<M> {
     pub fn tell(&self) -> u64 {
         self.handle.tell()
     }
-}
 
-impl XtcTrajectory<Read> {
-    /// Open a file in read mode
-    pub fn open_read(path: impl AsRef<Path>) -> Result<Self> {
-        Self::open(path)
-    }
-}
-
-impl XtcTrajectory<Append> {
-    /// Open a file in append mode
-    pub fn open_append(path: impl AsRef<Path>) -> Result<Self> {
-        Self::open(path)
-    }
-}
-
-impl XtcTrajectory<Write> {
-    /// Open a file in write mode
-    pub fn open_write(path: impl AsRef<Path>) -> Result<Self> {
-        Self::open(path)
-    }
-}
-
-impl<R: ReaderMode> TrajectoryReader for XtcTrajectory<R> {
-    fn read(&mut self, frame: &mut Frame) -> Result<()> {
+    fn read_inner(&mut self, frame: &mut Frame) -> Result<()> {
         let mut step: c_int = 0;
 
         let num_atoms = self
-            .get_num_atoms()
+            .get_num_atoms_inner()
             .map_err(|e| Error::CouldNotCheckNAtoms(Box::new(e)))?;
         if num_atoms != frame.coords.len() {
             return Err((&*frame, num_atoms).into());
@@ -292,7 +269,7 @@ impl<R: ReaderMode> TrajectoryReader for XtcTrajectory<R> {
         }
     }
 
-    fn get_num_atoms(&mut self) -> Result<usize> {
+    fn get_num_atoms_inner(&mut self) -> Result<usize> {
         self.num_atoms
             .get_or_create(|| {
                 let mut num_atoms: c_int = 0;
@@ -313,10 +290,8 @@ impl<R: ReaderMode> TrajectoryReader for XtcTrajectory<R> {
             })
             .clone()
     }
-}
 
-impl<W: WriterMode> TrajectoryWriter for XtcTrajectory<W> {
-    fn write(&mut self, frame: &Frame) -> Result<()> {
+    fn write_inner(&mut self, frame: &Frame) -> Result<()> {
         unsafe {
             let code = xdrfile_xtc::write_xtc(
                 self.handle.xdrfile,
@@ -335,7 +310,7 @@ impl<W: WriterMode> TrajectoryWriter for XtcTrajectory<W> {
         }
     }
 
-    fn flush(&mut self) -> Result<()> {
+    fn flush_inner(&mut self) -> Result<()> {
         unsafe {
             let code = xdr_seek::xdr_flush(self.handle.xdrfile);
             if let Some(err) = check_code(code, ErrorTask::Flush) {
@@ -350,6 +325,67 @@ impl<W: WriterMode> TrajectoryWriter for XtcTrajectory<W> {
 impl<M: FileMode> io::Seek for XtcTrajectory<M> {
     fn seek(&mut self, pos: io::SeekFrom) -> io::Result<u64> {
         self.handle.seek(pos)
+    }
+}
+
+impl XtcTrajectory<Read> {
+    /// Open a file in read mode
+    pub fn open_read(path: impl AsRef<Path>) -> Result<Self> {
+        Self::open(path)
+    }
+}
+
+impl TrajectoryReader for XtcTrajectory<Read> {
+    fn read(&mut self, frame: &mut Frame) -> Result<()> {
+        self.read_inner(frame)
+    }
+
+    fn get_num_atoms(&mut self) -> Result<usize> {
+        self.get_num_atoms_inner()
+    }
+}
+
+impl XtcTrajectory<Write> {
+    /// Open a file in write mode
+    pub fn open_write(path: impl AsRef<Path>) -> Result<Self> {
+        Self::open(path)
+    }
+}
+
+impl TrajectoryWriter for XtcTrajectory<Write> {
+    fn write(&mut self, frame: &Frame) -> Result<()> {
+        self.write_inner(frame)
+    }
+
+    fn flush(&mut self) -> Result<()> {
+        self.flush_inner()
+    }
+}
+
+impl XtcTrajectory<Append> {
+    /// Open a file in append mode
+    pub fn open_append(path: impl AsRef<Path>) -> Result<Self> {
+        Self::open(path)
+    }
+}
+
+impl TrajectoryReader for XtcTrajectory<Append> {
+    fn read(&mut self, frame: &mut Frame) -> Result<()> {
+        self.read_inner(frame)
+    }
+
+    fn get_num_atoms(&mut self) -> Result<usize> {
+        self.get_num_atoms_inner()
+    }
+}
+
+impl TrajectoryWriter for XtcTrajectory<Append> {
+    fn write(&mut self, frame: &Frame) -> Result<()> {
+        self.write_inner(frame)
+    }
+
+    fn flush(&mut self) -> Result<()> {
+        self.flush_inner()
     }
 }
 
@@ -371,36 +407,13 @@ impl<M: FileMode> TrrTrajectory<M> {
     pub fn tell(&self) -> u64 {
         self.handle.tell()
     }
-}
 
-impl TrrTrajectory<Read> {
-    /// Open a file in read mode
-    pub fn open_read(path: impl AsRef<Path>) -> Result<Self> {
-        Self::open(path)
-    }
-}
-
-impl TrrTrajectory<Append> {
-    /// Open a file in append mode
-    pub fn open_append(path: impl AsRef<Path>) -> Result<Self> {
-        Self::open(path)
-    }
-}
-
-impl TrrTrajectory<Write> {
-    /// Open a file in write mode
-    pub fn open_write(path: impl AsRef<Path>) -> Result<Self> {
-        Self::open(path)
-    }
-}
-
-impl<R: ReaderMode> TrajectoryReader for TrrTrajectory<R> {
-    fn read(&mut self, frame: &mut Frame) -> Result<()> {
+    fn read_inner(&mut self, frame: &mut Frame) -> Result<()> {
         let mut step: c_int = 0;
         let mut lambda: c_float = 0.0;
 
         let num_atoms = self
-            .get_num_atoms()
+            .get_num_atoms_inner()
             .map_err(|e| Error::CouldNotCheckNAtoms(Box::new(e)))?;
         if num_atoms != frame.coords.len() {
             return Err((&*frame, num_atoms).into());
@@ -426,7 +439,7 @@ impl<R: ReaderMode> TrajectoryReader for TrrTrajectory<R> {
         }
     }
 
-    fn get_num_atoms(&mut self) -> Result<usize> {
+    fn get_num_atoms_inner(&mut self) -> Result<usize> {
         self.num_atoms
             .get_or_create(|| {
                 let mut num_atoms: c_int = 0;
@@ -446,10 +459,8 @@ impl<R: ReaderMode> TrajectoryReader for TrrTrajectory<R> {
             })
             .clone()
     }
-}
 
-impl<W: WriterMode> TrajectoryWriter for TrrTrajectory<W> {
-    fn write(&mut self, frame: &Frame) -> Result<()> {
+    fn write_inner(&mut self, frame: &Frame) -> Result<()> {
         unsafe {
             let code = xdrfile_trr::write_trr(
                 self.handle.xdrfile,
@@ -470,7 +481,7 @@ impl<W: WriterMode> TrajectoryWriter for TrrTrajectory<W> {
         }
     }
 
-    fn flush(&mut self) -> Result<()> {
+    fn flush_inner(&mut self) -> Result<()> {
         unsafe {
             let code = xdr_seek::xdr_flush(self.handle.xdrfile);
             if let Some(err) = check_code(code, ErrorTask::Flush) {
@@ -485,6 +496,67 @@ impl<W: WriterMode> TrajectoryWriter for TrrTrajectory<W> {
 impl<M: FileMode> io::Seek for TrrTrajectory<M> {
     fn seek(&mut self, pos: io::SeekFrom) -> io::Result<u64> {
         self.handle.seek(pos)
+    }
+}
+
+impl TrrTrajectory<Read> {
+    /// Open a file in read mode
+    pub fn open_read(path: impl AsRef<Path>) -> Result<Self> {
+        Self::open(path)
+    }
+}
+
+impl TrajectoryReader for TrrTrajectory<Read> {
+    fn read(&mut self, frame: &mut Frame) -> Result<()> {
+        self.read_inner(frame)
+    }
+
+    fn get_num_atoms(&mut self) -> Result<usize> {
+        self.get_num_atoms_inner()
+    }
+}
+
+impl TrrTrajectory<Write> {
+    /// Open a file in write mode
+    pub fn open_write(path: impl AsRef<Path>) -> Result<Self> {
+        Self::open(path)
+    }
+}
+
+impl TrajectoryWriter for TrrTrajectory<Write> {
+    fn write(&mut self, frame: &Frame) -> Result<()> {
+        self.write_inner(frame)
+    }
+
+    fn flush(&mut self) -> Result<()> {
+        self.flush_inner()
+    }
+}
+
+impl TrrTrajectory<Append> {
+    /// Open a file in append mode
+    pub fn open_append(path: impl AsRef<Path>) -> Result<Self> {
+        Self::open(path)
+    }
+}
+
+impl TrajectoryReader for TrrTrajectory<Append> {
+    fn read(&mut self, frame: &mut Frame) -> Result<()> {
+        self.read_inner(frame)
+    }
+
+    fn get_num_atoms(&mut self) -> Result<usize> {
+        self.get_num_atoms_inner()
+    }
+}
+
+impl TrajectoryWriter for TrrTrajectory<Append> {
+    fn write(&mut self, frame: &Frame) -> Result<()> {
+        self.write_inner(frame)
+    }
+
+    fn flush(&mut self) -> Result<()> {
+        self.flush_inner()
     }
 }
 

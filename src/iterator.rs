@@ -14,7 +14,7 @@ fn into_iter_inner<T: TrajectoryReader>(mut traj: T) -> TrajectoryIterator<T> {
     }
 }
 
-impl<R: filemode::ReaderMode> IntoIterator for XtcTrajectory<R> {
+impl IntoIterator for XtcTrajectory<Read> {
     type Item = Result<Rc<Frame>>;
     type IntoIter = TrajectoryIterator<Self>;
 
@@ -23,7 +23,25 @@ impl<R: filemode::ReaderMode> IntoIterator for XtcTrajectory<R> {
     }
 }
 
-impl<R: filemode::ReaderMode> IntoIterator for TrrTrajectory<R> {
+impl IntoIterator for TrrTrajectory<Read> {
+    type Item = Result<Rc<Frame>>;
+    type IntoIter = TrajectoryIterator<Self>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        into_iter_inner(self)
+    }
+}
+
+impl IntoIterator for XtcTrajectory<Append> {
+    type Item = Result<Rc<Frame>>;
+    type IntoIter = TrajectoryIterator<Self>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        into_iter_inner(self)
+    }
+}
+
+impl IntoIterator for TrrTrajectory<Append> {
     type Item = Result<Rc<Frame>>;
     type IntoIter = TrajectoryIterator<Self>;
 

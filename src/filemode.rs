@@ -43,15 +43,6 @@ impl FileMode for Append {
     }
 }
 
-/// Trait for modes that can read (read, append)
-pub trait ReaderMode: FileMode + private::Sealed {}
-/// Trait for modes that can write (write, append)
-pub trait WriterMode: FileMode + private::Sealed {}
-impl ReaderMode for Read {}
-impl ReaderMode for Append {}
-impl WriterMode for Append {}
-impl WriterMode for Write {}
-
 impl From<Read> for ErrorFileMode {
     fn from(_: Read) -> Self {
         Self::Read
