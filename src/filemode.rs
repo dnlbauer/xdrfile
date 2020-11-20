@@ -1,3 +1,5 @@
+//! Mode types for opening trajectory files
+
 mod private {
     /// Prevent users from implementing FileMode on their own types
     ///
@@ -13,7 +15,7 @@ mod private {
 ///
 /// FileMode is object safe:
 /// ```
-/// # use xdrfile::{FileMode, Read, Write, Append};
+/// # use xdrfile::filemode::{FileMode, Read, Write, Append};
 /// let trait_obj: Box<dyn FileMode> = Box::new(Read);
 /// ```
 pub trait FileMode: private::Sealed {

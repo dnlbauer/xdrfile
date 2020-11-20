@@ -1,3 +1,5 @@
+//! Iterator types for trajectories
+
 use crate::*;
 use std::rc::Rc;
 
@@ -14,7 +16,7 @@ fn into_iter_inner<T: TrajectoryReader>(mut traj: T) -> TrajectoryIterator<T> {
     }
 }
 
-impl IntoIterator for XtcTrajectory<Read> {
+impl IntoIterator for XtcTrajectory<filemode::Read> {
     type Item = Result<Rc<Frame>>;
     type IntoIter = TrajectoryIterator<Self>;
 
@@ -23,7 +25,7 @@ impl IntoIterator for XtcTrajectory<Read> {
     }
 }
 
-impl IntoIterator for TrrTrajectory<Read> {
+impl IntoIterator for TrrTrajectory<filemode::Read> {
     type Item = Result<Rc<Frame>>;
     type IntoIter = TrajectoryIterator<Self>;
 
@@ -32,7 +34,7 @@ impl IntoIterator for TrrTrajectory<Read> {
     }
 }
 
-impl IntoIterator for XtcTrajectory<Append> {
+impl IntoIterator for XtcTrajectory<filemode::Append> {
     type Item = Result<Rc<Frame>>;
     type IntoIter = TrajectoryIterator<Self>;
 
@@ -41,7 +43,7 @@ impl IntoIterator for XtcTrajectory<Append> {
     }
 }
 
-impl IntoIterator for TrrTrajectory<Append> {
+impl IntoIterator for TrrTrajectory<filemode::Append> {
     type Item = Result<Rc<Frame>>;
     type IntoIter = TrajectoryIterator<Self>;
 

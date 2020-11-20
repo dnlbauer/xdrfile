@@ -64,10 +64,9 @@ extern crate lazy_init;
 pub mod c_abi;
 mod errors;
 mod frame;
-mod iterator;
+pub mod iterator;
 pub use errors::*;
 pub use frame::Frame;
-pub use iterator::*;
 
 use c_abi::xdr_seek;
 use c_abi::xdrfile;
@@ -85,8 +84,8 @@ use std::marker::PhantomData;
 use std::os::raw::{c_float, c_int};
 use std::path::{Path, PathBuf};
 
-mod filemode;
-pub use filemode::*;
+pub mod filemode;
+use filemode::*;
 
 fn path_to_cstring(path: impl AsRef<Path>) -> Result<CString> {
     if let Some(s) = path.as_ref().to_str() {
