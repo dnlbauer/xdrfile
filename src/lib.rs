@@ -81,8 +81,10 @@ use std::convert::{TryFrom, TryInto};
 use std::ffi::CString;
 use std::io;
 use std::io::SeekFrom;
+use std::marker::PhantomData;
 use std::os::raw::{c_float, c_int};
 use std::path::{Path, PathBuf};
+use std::ptr::NonNull;
 
 /// File Mode for accessing trajectories.
 #[derive(Debug, Clone, PartialEq)]
@@ -147,7 +149,8 @@ fn check_code(code: impl Into<ErrorCode>, task: ErrorTask) -> Option<Error> {
 
 /// A safe wrapper around the c implementation of an XDRFile
 struct XDRFile {
-    xdrfile: *mut XDRFILE,
+    xdrfile: NonNull<XDRFILE>,
+    _owned: PhantomData<XDRFILE>,
     #[allow(dead_code)]
     filemode: FileMode,
     path: PathBuf,
@@ -166,10 +169,11 @@ impl XDRFile {
             // Reconstitute the CString so it is deallocated correctly
             let _ = CString::from_raw(path_p);
 
-            if !xdrfile.is_null() {
+            if let Some(xdrfile) = NonNull::new(xdrfile) {
                 let path = path.to_owned();
                 Ok(XDRFile {
                     xdrfile,
+                    _owned: PhantomData,
                     filemode,
                     path,
                 })
@@ -183,7 +187,7 @@ impl XDRFile {
     /// Get the current position in the file
     pub fn tell(&self) -> u64 {
         unsafe {
-            xdr_seek::xdr_tell(self.xdrfile)
+            xdr_seek::xdr_tell(self.xdrfile.as_ptr())
                 .try_into()
                 .expect("i64 could not be converted to u64")
         }
@@ -201,7 +205,7 @@ impl io::Seek for XDRFile {
             SeekFrom::End(i) => (2, i),
         };
         unsafe {
-            let code = xdr_seek::xdr_seek(self.xdrfile, pos, whence);
+            let code = xdr_seek::xdr_seek(self.xdrfile.as_ptr(), pos, whence);
             match check_code(code, ErrorTask::Seek) {
                 None => Ok(self.tell()),
                 Some(err) => Err(io::Error::new(io::ErrorKind::Other, err)),
@@ -214,7 +218,7 @@ impl Drop for XDRFile {
     /// Close the underlying xdr file on drop
     fn drop(&mut self) {
         unsafe {
-            xdrfile::xdrfile_close(self.xdrfile);
+            xdrfile::xdrfile_close(self.xdrfile.as_ptr());
         }
     }
 }
@@ -281,7 +285,7 @@ impl Trajectory for XTCTrajectory {
 
         unsafe {
             let code = xdrfile_xtc::read_xtc(
-                self.handle.xdrfile,
+                self.handle.xdrfile.as_ptr(),
                 to!(num_atoms, ErrorTask::Read)?,
                 &mut step,
                 &mut frame.time,
@@ -300,7 +304,7 @@ impl Trajectory for XTCTrajectory {
     fn write(&mut self, frame: &Frame) -> Result<()> {
         unsafe {
             let code = xdrfile_xtc::write_xtc(
-                self.handle.xdrfile,
+                self.handle.xdrfile.as_ptr(),
                 to!(frame.num_atoms(), ErrorTask::Write)?,
                 to!(frame.step, ErrorTask::Write)?,
                 frame.time,
@@ -318,7 +322,7 @@ impl Trajectory for XTCTrajectory {
 
     fn flush(&mut self) -> Result<()> {
         unsafe {
-            let code = xdr_seek::xdr_flush(self.handle.xdrfile);
+            let code = xdr_seek::xdr_flush(self.handle.xdrfile.as_ptr());
             if let Some(err) = check_code(code, ErrorTask::Flush) {
                 Err(err)
             } else {
@@ -408,7 +412,7 @@ impl Trajectory for TRRTrajectory {
 
         unsafe {
             let code = xdrfile_trr::read_trr(
-                self.handle.xdrfile,
+                self.handle.xdrfile.as_ptr(),
                 to!(num_atoms, ErrorTask::Read)?,
                 &mut step,
                 &mut frame.time,
@@ -429,7 +433,7 @@ impl Trajectory for TRRTrajectory {
     fn write(&mut self, frame: &Frame) -> Result<()> {
         unsafe {
             let code = xdrfile_trr::write_trr(
-                self.handle.xdrfile,
+                self.handle.xdrfile.as_ptr(),
                 to!(frame.len(), ErrorTask::Write)?,
                 to!(frame.step, ErrorTask::Write)?,
                 frame.time,
@@ -449,7 +453,7 @@ impl Trajectory for TRRTrajectory {
 
     fn flush(&mut self) -> Result<()> {
         unsafe {
-            let code = xdr_seek::xdr_flush(self.handle.xdrfile);
+            let code = xdr_seek::xdr_flush(self.handle.xdrfile.as_ptr());
             if let Some(err) = check_code(code, ErrorTask::Flush) {
                 Err(err)
             } else {
